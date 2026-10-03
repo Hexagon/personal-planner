@@ -2,6 +2,9 @@
 -- All fixtures, helper functions, and mutations are rolled back.
 begin;
 
+create extension if not exists pgtap with schema extensions;
+select plan(1);
+
 create function pg_temp.propose(p_proposal jsonb)
 returns uuid
 language plpgsql
@@ -529,5 +532,10 @@ begin
   end if;
 end;
 $$;
+
+reset role;
+
+select pass('Task context, completion, ownership, atomicity, and retry assertions passed');
+select * from finish();
 
 rollback;

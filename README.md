@@ -210,8 +210,10 @@ The conversational regressions mock structured model outputs: they verify the
 request paths, validation, saved-record selection and confirmation boundaries,
 not a live model's accuracy at understanding every phrase or typo. Database
 ownership/input/atomicity tests are in `supabase/tests/task_context.sql`; run
-that file with `psql -v ON_ERROR_STOP=1` against a disposable database after
-applying the migrations. The tests roll back their fixtures.
+them with `supabase test db` against a local Supabase database after applying
+the migrations. The tests use pgTAP and roll back their fixtures. Regenerate
+`src/database.types.ts` with `supabase gen types typescript --local` and format
+it with `deno fmt` after schema changes.
 
 ### Modules
 
