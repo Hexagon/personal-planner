@@ -68,9 +68,9 @@ Review the exact structured proposal displayed in chat, then **Confirm** or
 **Cancel**. Even additions require confirmation. Changing priorities, completing
 tasks, deleting data, setting preferences, and creating/removing reminders all
 use the same flow. One action is proposed per turn. To alter a reminder, remove
-it and create a new one. Profile updates replace the displayed preference
-fields. Monetary proposals are bound to the currency at proposal time. If it has
-changed, cancel the old proposal and request a new one.
+it and create a new one. Profile, asset, and task updates preserve fields not
+explicitly changed. Monetary proposals are bound to the currency at proposal
+time. If it has changed, cancel the old proposal and request a new one.
 
 ## Planning and safety boundaries
 
@@ -153,9 +153,12 @@ and should be checked before exposing the deployment.
 No agent framework, autonomous loops, frontend build step, or extra services.
 Requests use one model call, at most 1,800 output tokens, a 30-second AI
 timeout, and one active mutation/chat request per account per process. Context
-is limited to 100 records per table and 12 recent messages, with a fixed size
-cap; this is a small family planner, not an unbounded archive. Add external rate
-limits and provider spending limits as appropriate. Logs intentionally omit
-credentials, provider responses, and chat content.
+is limited to 100 records per table and 12 recent messages. Bounded summaries
+and selected full details keep saved context below 120,000 characters without
+blocking cleanup requests. Summaries truncate long text; ask by full description
+or record ID to prioritize full details. This is a small family planner, not an
+unbounded archive. Add external rate limits and provider spending limits as
+appropriate. Logs intentionally omit credentials, provider responses, and chat
+content.
 
 MIT licensed; see `LICENSE`.

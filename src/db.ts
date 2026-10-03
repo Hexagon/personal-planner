@@ -51,6 +51,7 @@ export class Database {
       `${table}?id=eq.${uuid(id)}&user_id=eq.${this.userId}&limit=1`,
     ) as RecordData[];
     if (!rows.length) throw new InputError("Record not found in your account");
+    return rows[0];
   }
   confirm(messageId: unknown, cancel: boolean) {
     const id = uuid(messageId);

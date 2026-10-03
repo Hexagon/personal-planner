@@ -8,4 +8,4 @@ export function prioritize(tasks: RecordData[], today: string): RecordData[] {
   );
 }
 export const taskRole =
-  "Task tracking: suggest clear priorities, respect saved status and deadlines. Never change records without a validated, confirmed proposal. Updates contain all current fields.";
+  "Task tracking: suggest clear priorities, respect saved status and deadlines. Never change records without a validated, confirmed proposal. Updates contain only explicitly changed fields.";
