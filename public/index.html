@@ -22,7 +22,7 @@
       </section>
       <section id="chat" hidden>
         <label
-          class="consent"><input type="checkbox" id="consent"> I agree to send my chat and selected task, asset, financial, and location data to OpenRouter and its model provider. Do not include secrets.</label>
+          class="consent"><input type="checkbox" id="consent"> I agree to send my chat and selected task, asset, financial, and location data to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
         <label for="model">Model</label>
         <select id="model"></select>
         <div id="messages" role="log" aria-live="polite"
@@ -32,6 +32,7 @@
           <textarea id="prompt" maxlength="4000" rows="3"
             placeholder="What should we do today? We have two hours and $40."
             required></textarea>
+          <label><input type="checkbox" id="online-search"> Use online search for this message (up to 3 results)</label>
           <button id="send" type="submit">Send</button>
         </form>
         <p

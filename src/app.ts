@@ -95,11 +95,19 @@ export function createHandler(config: Config) {
               "Consent to OpenRouter processing is required",
             );
           }
+          if (
+            body.online_search !== undefined &&
+            typeof body.online_search !== "boolean"
+          ) {
+            throw new InputError("Online search choice must be a boolean");
+          }
           const model = body.model ?? config.model;
           if (!isAvailableModel(model)) {
             throw new InputError("Choose a supported model");
           }
-          return json(await chat(db, config, body.content, model));
+          return json(
+            await chat(db, config, body.content, model, body.online_search),
+          );
         }
         if (typeof body.cancel !== "boolean") {
           throw new InputError("Confirmation choice required");
