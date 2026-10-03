@@ -7,13 +7,13 @@ import {
   uuid,
 } from "./validation.ts";
 
-export function startScheduler(config: Config): Cron {
+export async function runSchedulerTick(config: Config): Promise<void> {
   const headers = {
     apikey: config.serviceKey,
     Authorization: ["Bearer", config.serviceKey].join(" "),
     "Content-Type": "application/json",
   };
-  async function tick() {
+  try {
     const now = new Date();
     const response = await fetch(
       `${config.supabaseUrl}/rest/v1/reminders?active=eq.true&next_run=lte.${
@@ -67,16 +67,18 @@ export function startScheduler(config: Config): Cron {
         }
       }
     }
+  } catch {
+    console.error("Reminder polling failed; will retry on next tick");
   }
-  const run = async () => {
-    try {
-      await tick();
-    } catch {
-      console.error("Reminder polling failed; will retry on next tick");
-    }
-  };
+}
+
+export function startScheduler(config: Config): Cron {
   // One bounded catch-up message per reminder, skipping older missed occurrences.
-  const job = new Cron("* * * * *", { timezone: "UTC", protect: true }, run);
+  const job = new Cron(
+    "* * * * *",
+    { timezone: "UTC", protect: true },
+    () => runSchedulerTick(config),
+  );
   void job.trigger();
   return job;
 }

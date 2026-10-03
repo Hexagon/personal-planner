@@ -6,6 +6,6 @@ const config = loadConfig();
 const scheduler = startScheduler(config);
 const server = Deno.serve({ port: config.port }, createHandler(config));
 Deno.addSignalListener("SIGTERM", () => {
-  scheduler?.stop();
+  scheduler.stop();
   void server.shutdown();
 });
