@@ -380,7 +380,7 @@ Deno.test("informal task requests use generic validated context and deterministi
     supabaseUrl: "https://database.example",
     supabaseKey: "public-placeholder",
     openrouterKey: "server-placeholder",
-    model: "test-model",
+    model: "deepseek/deepseek-v4-flash",
     serviceKey: "server-service-placeholder",
     origin: "http://localhost:8000",
     port: 8000,
