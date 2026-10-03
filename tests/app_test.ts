@@ -8,7 +8,7 @@ const config: Config = {
   supabaseUrl: "https://database.example",
   supabaseKey: "public-placeholder",
   openrouterKey: "server-placeholder",
-  model: "test-model",
+  model: "deepseek/deepseek-v4-flash",
   serviceKey: "privileged-placeholder",
   origin: "http://localhost:8000",
   port: 8000,
@@ -51,6 +51,10 @@ Deno.test("public config never leaks server credentials; unauthorized and cross-
   assert(
     !publicConfig.includes("privileged-placeholder") &&
       !publicConfig.includes("server-placeholder"),
+  );
+  assert(
+    publicConfig.includes("deepseek/deepseek-v4-flash") &&
+      publicConfig.includes("deepseek/deepseek-v4-pro"),
   );
   assert(
     (await handler(new Request(`${config.origin}/api/messages`))).status ===
@@ -117,6 +121,15 @@ Deno.test("consent, confirmation IDs and request bodies are validated before wri
     );
     assert(
       (await handler(
+        request("/api/chat", {
+          content: "Hi",
+          ai_consent: true,
+          model: "untrusted/provider-model",
+        }),
+      )).status === 400,
+    );
+    assert(
+      (await handler(
         request("/api/confirm", { message_id: "bad", cancel: false }),
       )).status === 400,
     );
@@ -150,6 +163,10 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
       return Promise.resolve(response({ id: owner }));
     }
     if (url.includes("openrouter.ai")) {
+      assert(
+        JSON.parse(String(init?.body)).model === "deepseek/deepseek-v4-pro",
+        "Chat should use the selected DeepSeek model",
+      );
       return Promise.resolve(
         response({
           choices: [{
@@ -217,7 +234,11 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
     return Promise.resolve(response([]));
   }, async () => {
     const result = await createHandler(config)(
-      request("/api/chat", { content: "Add a bike", ai_consent: true }),
+      request("/api/chat", {
+        content: "Add a bike",
+        ai_consent: true,
+        model: "deepseek/deepseek-v4-pro",
+      }),
     );
     assert(result.status === 200 && assistantSaved);
   });
