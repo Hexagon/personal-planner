@@ -224,8 +224,7 @@ The conversational regressions mock structured model outputs: they verify the
 request paths, validation, saved-record selection and confirmation boundaries,
 not a live model's accuracy at understanding every phrase or typo. Database
 ownership/input/atomicity tests are in `supabase/tests/task_context.sql`; run
-them locally with the same commands used in CI (Docker and the Supabase CLI are
-required):
+them locally with Docker and the Supabase CLI:
 
 ```sh
 supabase db start
