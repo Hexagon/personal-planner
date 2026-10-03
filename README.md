@@ -121,9 +121,10 @@ time. If it has changed, cancel the old proposal and request a new one.
   every calculated plan.
 - Location labels and optional coordinates support geographic grouping.
   Straight-line distances are approximate; **travel time is not included**.
-  There is no geocoder, live routing, traffic, business discovery, or
-  opening-hours service. Supply coordinates or area labels and allow extra
-  travel time yourself.
+  There is no geocoder, live routing, traffic, or verified opening-hours
+  service. Optional online search can find public information but does not
+  verify locations, routes, or whether a place is currently open. Supply
+  coordinates or area labels and allow extra travel time yourself.
 - Financial guidance is basic budgeting, not investment, tax, legal, or lending
   advice. The app cannot purchase anything or perform financial transactions.
 - The model can suggest and explain, but cannot execute arbitrary tools or SQL.
@@ -135,10 +136,14 @@ time. If it has changed, cancel the old proposal and request a new one.
   provide another boundary.
 - Before sending chat, users must accept a notice that chat and selected saved
   task, location, and financial data go through OpenRouter and its model
-  provider. Treat AI replies as suggestions; do not include secrets in chat.
+  provider. Online search is an optional per-message choice; when enabled,
+  OpenRouter may send generated search queries to its search provider. Search
+  is limited to three results per request. Treat search results and AI replies
+  as untrusted suggestions; do not include secrets in chat.
 - Choose DeepSeek V4 Flash or Pro in chat. The model must return the app's JSON
   reply/proposal format; available actions are proposals, not callable tools,
-  and are never saved without inline confirmation.
+  and are never saved without inline confirmation. Select **Use online search**
+  for a message when current public information is useful; it is off by default.
 
 ## Reminders
 

@@ -205,8 +205,10 @@ element("chat-form").onsubmit = (event) => {
       content: element("prompt").value,
       model: element("model").value,
       ai_consent: true,
+      online_search: element("online-search").checked,
     });
     element("prompt").value = "";
+    element("online-search").checked = false;
     await refresh();
     notice("");
   });
