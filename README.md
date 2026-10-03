@@ -53,7 +53,10 @@ Git.
 Run `deno task fmt`, `deno task lint`, or `deno task test` to check formatting,
 lint rules, or tests individually. `deno task check` runs all three along with
 type checks for both server entrypoints and the browser app. GitHub Actions runs
-this full check on pushes and pull requests.
+this full check on pushes and pull requests, then starts the local Supabase
+database, applies migrations, runs pgTAP tests, and verifies generated database
+types are up to date. The app tests mock external providers and require no
+credentials; database CI requires Docker.
 
 ### Deno Deploy
 
