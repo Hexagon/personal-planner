@@ -7,20 +7,34 @@ family's context; there is no cross-account household sharing.
 
 ## Setup
 
-1. Install [Deno 2](https://deno.com/). Create your own
-   [Supabase](https://supabase.com/) project and
+1. Install [Deno 2](https://deno.com/), create a
+   [Supabase](https://supabase.com/) project, and get an
    [OpenRouter](https://openrouter.ai/) API key.
-2. Apply all SQL files in `supabase/migrations/` in filename order in your
-   Supabase SQL editor (or use `supabase db push` if you already use the
-   Supabase CLI). Existing installations should apply only migrations not yet
-   applied. The migration creates profiles, assets, tasks, messages, reminders,
-   and planning sessions, with ownership policies on every table.
-3. Enable email/password authentication in Supabase. Set its Site URL to your
-   app's origin and configure your confirmation-email redirects. Users confirm
-   their email, return to the app, and log in with their password. For public
-   deployments, configure SMTP, auth rate limits, and appropriate signup
-   restrictions.
-4. Copy `.env.example` to `.env`, then fill in your deployment's credentials:
+2. Apply the SQL files in `supabase/migrations/` in filename order using the
+   Supabase SQL editor. Alternatively, install the
+   [Supabase CLI](https://supabase.com/docs/guides/cli), then log in, link this
+   repository to your project using its project ref (replace the placeholder
+   below), and push the migrations:
+
+   ```sh
+   supabase login
+   supabase link --project-ref <project-ref>
+   supabase db push
+   ```
+
+   Existing installations should apply only migrations not yet applied.
+3. In Supabase, enable email/password authentication. Set the Auth Site URL and
+   allowed email-confirmation redirect URL to your app's origin
+   (`http://localhost:8000` locally). After signup, users confirm their email
+   and log in with their password.
+4. From the repository root, copy `.env.example` to `.env`:
+
+   ```sh
+   cp .env.example .env
+   ```
+
+   Fill in the values. Find the project URL and API keys in your Supabase
+   project settings:
    - `SUPABASE_URL`: your project URL.
    - `SUPABASE_PUBLISHABLE_KEY`: public publishable key or legacy anon key.
      **Never put a secret/service-role key here.**
@@ -35,16 +49,16 @@ family's context; there is no cross-account household sharing.
    - `APP_ORIGIN`: exact browser origin, default `http://localhost:8000`. Set
      this to your HTTPS origin when deployed.
    - `PORT`: default `8000`.
-5. From the repository root:
+5. Start the server from the repository root:
 
    ```sh
    deno task start
    ```
 
-   Open <http://localhost:8000>, create an account, and log in. For development
-   use `deno task dev`. Self-hosted deployments need a continuously running
-   process for Croner reminders; termination stops Croner and gracefully shuts
-   down HTTP. For Deno Deploy, follow the deployment instructions below.
+   Open <http://localhost:8000>, create an account, confirm the email if
+   required, and log in. Use `deno task dev` during development. Self-hosted
+   deployments need a continuously running process for Croner reminders; for
+   Deno Deploy, follow the deployment instructions below.
 
 Credentials belong to each self-hosting deployment, not individual app accounts.
 The browser receives only the Supabase URL and public key. Auth tokens are held
