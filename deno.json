@@ -1,11 +1,11 @@
 {
   "tasks": {
-    "start": "deno run --env-file=.env --allow-env --allow-net --allow-read=public src/main.ts",
-    "dev": "deno run --env-file=.env --allow-env --allow-net --allow-read=public --watch=src,public src/main.ts",
+    "start": "deno run --unstable-kv --env-file=.env --allow-env --allow-net --allow-read=public,planner.sqlite3 --allow-write=planner.sqlite3 src/main.ts",
+    "dev": "deno run --unstable-kv --env-file=.env --allow-env --allow-net --allow-read=public,planner.sqlite3 --allow-write=planner.sqlite3 --watch=src,public src/main.ts",
     "fmt": "deno fmt --check",
     "lint": "deno lint",
-    "test": "deno test",
-    "check": "deno task fmt && deno task lint && deno check src/main.ts public/app.js && deno check --unstable-cron src/deploy.ts && deno task test"
+    "test": "deno test --unstable-kv",
+    "check": "deno task fmt && deno task lint && deno check --unstable-kv src/main.ts public/app.js && deno check --unstable-kv --unstable-cron src/deploy.ts && deno task test"
   },
   "imports": {
     "@auth/core": "npm:@auth/core@0.41.3",

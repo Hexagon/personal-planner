@@ -9,8 +9,6 @@ import {
   validateProposal,
 } from "./validation.ts";
 
-export class AuthError extends Error {}
-
 type Table = "profiles" | "tasks" | "messages" | "reminders";
 type Entry = Deno.KvEntry<RecordData>;
 type KvCheck = Parameters<ReturnType<Deno.Kv["atomic"]>["check"]>[number];
@@ -18,6 +16,8 @@ const key = (table: Table, userId: string, id: string) =>
   ["planner", table, userId, id] as const;
 const taskRevisionKey = (userId: string) =>
   ["planner", "task_revision", userId] as const;
+const messageDateKey = (userId: string, createdAt: string, id: string) =>
+  ["planner", "message_dates", userId, createdAt, id] as const;
 const dueKey = (nextRun: string, userId: string, id: string) =>
   ["planner", "due", nextRun, userId, id] as const;
 const now = () => new Date().toISOString();
@@ -94,17 +94,36 @@ export class Database {
         ]);
         return profile.value ? [profile.value] : [];
       })()
-      : (await entries(this.kv, ["planner", table, this.userId])).map((entry) =>
-        entry.value
-      );
+      : table === "messages"
+      ? await (async () => {
+        const result: RecordData[] = [];
+        for await (
+          const index of this.kv.list<string>({
+            prefix: ["planner", "message_dates", this.userId],
+          }, { reverse: true, limit: 100 })
+        ) {
+          const id = index.key[4];
+          if (typeof id !== "string") continue;
+          const message = await this.kv.get<RecordData>(
+            key("messages", this.userId, id),
+          );
+          if (message.value) result.push(message.value);
+          if (result.length === 100) break;
+        }
+        return result;
+      })()
+      : (await entries(this.kv, ["planner", table, this.userId])).map((
+        entry,
+      ) => entry.value);
     let result = ordered(rows);
-    if (table === "messages") result = result.slice(0, 100);
     if (columns !== "*") {
       const selected = columns.split(",");
       result = result.map((row) =>
-        Object.fromEntries(selected.filter((field) => field in row).map(
-          (field) => [field, row[field]],
-        ))
+        Object.fromEntries(
+          selected.filter((field) => field in row).map(
+            (field) => [field, row[field]],
+          ),
+        )
       );
     }
     return result;
@@ -121,7 +140,10 @@ export class Database {
     if (role === "user" && proposal !== null) {
       throw new InputError("Invalid message");
     }
-    if (proposal && new TextEncoder().encode(JSON.stringify(proposal)).length > 65536) {
+    if (
+      proposal &&
+      new TextEncoder().encode(JSON.stringify(proposal)).length > 65536
+    ) {
       throw new InputError("Proposal is too large");
     }
     const message: RecordData = {
@@ -137,7 +159,14 @@ export class Database {
     const result = await this.kv.atomic().check({
       key: messageKey,
       versionstamp: null,
-    }).set(messageKey, message).commit();
+    }).set(messageKey, message).set(
+      messageDateKey(
+        this.userId,
+        String(message.created_at),
+        String(message.id),
+      ),
+      message.id,
+    ).commit();
     if (!result.ok) throw new Error("Could not append message");
     return [message];
   }
@@ -221,7 +250,10 @@ export class Database {
           taskEntries.map((entry) => [String(entry.value.id), entry]),
         );
         if (proposal.op === "add_task") {
-          if (tasks.filter((task) => task.status === "open").length >= maxOpenTasks) {
+          if (
+            tasks.filter((task) => task.status === "open").length >=
+              maxOpenTasks
+          ) {
             throw new InputError(
               `At most ${maxOpenTasks} open tasks are allowed; complete or remove some first`,
             );
@@ -240,9 +272,11 @@ export class Database {
             updated_at: timestamp,
             completed_at: null,
           };
+          const newTaskKey = key("tasks", this.userId, String(task.id));
+          checks.push({ key: newTaskKey, versionstamp: null });
           writes.push({
             type: "set",
-            key: key("tasks", this.userId, String(task.id)),
+            key: newTaskKey,
             value: task,
           });
         } else if (
@@ -291,7 +325,9 @@ export class Database {
         } else {
           const ids = data.ids as string[];
           const selected = ids.map((taskId) => taskEntryById.get(taskId));
-          if (selected.some((entry) => !entry || entry.value.status !== "open")) {
+          if (
+            selected.some((entry) => !entry || entry.value.status !== "open")
+          ) {
             throw new InputError("Every task must be owned and open");
           }
           for (const entry of selected as Entry[]) {
@@ -402,10 +438,12 @@ export async function dueReminders(
   const result: DueReminder[] = [];
   const end = ["planner", "due", `${before}\uffff`] as const;
   let scanned = 0;
-  for await (const index of kv.list<string>({
-    start: ["planner", "due"],
-    end,
-  })) {
+  for await (
+    const index of kv.list<string>({
+      start: ["planner", "due"],
+      end,
+    }, { limit })
+  ) {
     if (scanned++ >= limit) break;
     const [, , , userId, id] = index.key as Deno.KvKey;
     if (typeof userId !== "string" || typeof id !== "string") continue;
@@ -414,7 +452,12 @@ export async function dueReminders(
       entry.value?.active === true &&
       entry.value.next_run === index.key[2]
     ) {
-      result.push({ userId, id, row: entry.value, versionstamp: entry.versionstamp! });
+      result.push({
+        userId,
+        id,
+        row: entry.value,
+        versionstamp: entry.versionstamp!,
+      });
     }
   }
   return result;
@@ -444,7 +487,14 @@ export async function deliverReminder(
   ).set(reminderKey, { ...reminder.row, next_run: nextRun }).set(
     dueKey(nextRun, reminder.userId, reminder.id),
     reminder.id,
-  ).set(messageKey, message).commit();
+  ).set(messageKey, message).set(
+    messageDateKey(
+      reminder.userId,
+      String(message.created_at),
+      String(message.id),
+    ),
+    message.id,
+  ).commit();
   return result.ok;
 }
 

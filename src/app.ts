@@ -1,6 +1,6 @@
 import { availableModels, type Config, isAvailableModel } from "./config.ts";
-import { authenticate, handleAuth } from "./auth.ts";
-import { AuthError, Database } from "./db.ts";
+import { authenticate, AuthError, handleAuth } from "./auth.ts";
+import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
 import { InputError, object } from "./validation.ts";
 
@@ -37,7 +37,9 @@ export function createHandler(config: Config, kv: Deno.Kv) {
           },
         );
       }
-      if (path.startsWith("/auth/") && ["GET", "POST"].includes(request.method)) {
+      if (
+        path.startsWith("/auth/") && ["GET", "POST"].includes(request.method)
+      ) {
         const response = await handleAuth(request, config);
         for (const [name, value] of Object.entries(headers)) {
           response.headers.set(name, value);
@@ -50,8 +52,12 @@ export function createHandler(config: Config, kv: Deno.Kv) {
           model: config.model,
           models: availableModels,
           providers: [
-            ...(config.googleClientId ? [{ id: "google", name: "Google" }] : []),
-            ...(config.githubClientId ? [{ id: "github", name: "GitHub" }] : []),
+            ...(config.googleClientId
+              ? [{ id: "google", name: "Google" }]
+              : []),
+            ...(config.githubClientId
+              ? [{ id: "github", name: "GitHub" }]
+              : []),
           ],
         });
       }

@@ -31,8 +31,24 @@ export function loadConfig(): Config {
   if (new TextEncoder().encode(authSecret).length < 32) {
     throw new Error("AUTH_SECRET must be at least 32 bytes");
   }
-  const origin =
-    new URL(Deno.env.get("APP_ORIGIN") ?? "http://localhost:8000").origin;
+  const appOrigin = new URL(
+    Deno.env.get("APP_ORIGIN") ?? "http://localhost:8000",
+  );
+  if (
+    appOrigin.protocol !== "https:" &&
+    (appOrigin.protocol !== "http:" || appOrigin.hostname !== "localhost")
+  ) {
+    throw new Error("APP_ORIGIN must use HTTPS (except localhost)");
+  }
+  if (
+    appOrigin.pathname !== "/" || appOrigin.search || appOrigin.hash ||
+    appOrigin.username || appOrigin.password
+  ) {
+    throw new Error(
+      "APP_ORIGIN must be an origin without a path or credentials",
+    );
+  }
+  const origin = appOrigin.origin;
   const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
   const githubClientId = Deno.env.get("GITHUB_CLIENT_ID");

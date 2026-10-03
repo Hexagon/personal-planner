@@ -1,9 +1,5 @@
 import { Cron } from "croner";
-import {
-  deliverReminder,
-  dueReminders,
-  quarantineReminder,
-} from "./db.ts";
+import { deliverReminder, dueReminders, quarantineReminder } from "./db.ts";
 import { InputError, nextOccurrence } from "./validation.ts";
 
 export async function runSchedulerTick(kv: Deno.Kv): Promise<void> {

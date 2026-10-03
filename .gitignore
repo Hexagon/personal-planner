@@ -13,3 +13,4 @@ coverage/
 .env.*
 !.env.example
 node_modules/
+planner.sqlite3*

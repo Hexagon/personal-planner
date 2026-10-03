@@ -3,7 +3,8 @@ import { getToken } from "@auth/core/jwt";
 import GitHub from "@auth/core/providers/github";
 import Google from "@auth/core/providers/google";
 import type { Config } from "./config.ts";
-import { AuthError } from "./db.ts";
+
+export class AuthError extends Error {}
 
 export function authConfig(config: Config): AuthConfig {
   const secure = new URL(config.origin).protocol === "https:";
@@ -43,12 +44,25 @@ export function authConfig(config: Config): AuthConfig {
       },
     },
     callbacks: {
+      jwt({ token, account }) {
+        if (account) {
+          token.sub = `${account.provider}:${account.providerAccountId}`;
+        }
+        return token;
+      },
       session({ session, token }) {
         if (session.user && token.sub) {
           session.user.id = token.sub;
         }
         return session;
       },
+    },
+    logger: {
+      error() {
+        console.error("Authentication failed");
+      },
+      warn() {},
+      debug() {},
     },
   };
 }
@@ -89,7 +103,8 @@ export async function authenticate(
   });
   if (
     typeof token?.sub !== "string" || token.sub.length < 1 ||
-    token.sub.length > 200 || !/^[a-zA-Z0-9:_-]+$/.test(token.sub)
+    token.sub.length > 200 || !/^[a-zA-Z0-9:_-]+$/.test(token.sub) ||
+    typeof token.exp !== "number" || token.exp <= Date.now() / 1000
   ) {
     throw new AuthError();
   }
