@@ -164,6 +164,7 @@ Deno.test("coordinate proximity uses validated generic destinations and explicit
   );
   for (
     const query of [
+      { destination, radius_km: 0 },
       { destination, radius_km: -1 },
       { destination, radius_km: Infinity },
       { destination, radius_km: 1001 },
@@ -182,4 +183,16 @@ Deno.test("coordinate proximity uses validated generic destinations and explicit
       assert(error instanceof InputError);
     }
   }
+  for (const radius_km of [0, -1, 1001]) {
+    try {
+      taskList(tasks, { destination, radius_km });
+      throw new Error("Invalid radius accepted");
+    } catch (error) {
+      assert(
+        error instanceof InputError &&
+          error.message.includes("greater than 0 and at most 1000 km"),
+      );
+    }
+  }
+  assert(taskList(tasks, { destination, radius_km: 1000 }).includes("1000 km"));
 });

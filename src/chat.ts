@@ -14,6 +14,7 @@ import {
 } from "./planner/task-context.ts";
 import {
   InputError,
+  location,
   object,
   type RecordData,
   text,
@@ -103,6 +104,30 @@ export async function chat(db: Database, config: Config, input: unknown) {
     db.list("messages"),
   ]);
   const profile = profiles[0];
+  const savedLocations = [
+    profile.starting_location,
+    ...tasks.map((task) => task.location),
+  ];
+  const coordinatePairs = [...content.matchAll(
+    /(?<![\w.+-])([+-]?\d+(?:\.\d+)?)\s*[,;]\s*([+-]?\d+(?:\.\d+)?)(?![\w.+-])/g,
+  )].map((match) => [Number(match[1]), Number(match[2])]);
+  const groundedLocation: typeof location = (value) => {
+    const place = location(value);
+    if (!place || place.latitude == null) return place;
+    const labelKey = (label: unknown) =>
+      String(label).normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+    const supplied = coordinatePairs.some(([latitude, longitude]) =>
+      latitude === place.latitude && longitude === place.longitude
+    );
+    const saved = savedLocations.some((value) => {
+      if (!value) return false;
+      const saved = object(value);
+      return labelKey(saved.label) === labelKey(place.label) &&
+        saved.latitude === place.latitude &&
+        saved.longitude === place.longitude;
+    });
+    return supplied || saved ? place : { label: place.label };
+  };
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: String(profile.timezone),
   }).format(new Date());
@@ -229,13 +254,27 @@ export async function chat(db: Database, config: Config, input: unknown) {
         ...validateProposal({ op: raw.op, data }),
         currency: String(profile.currency),
       };
+      if (
+        proposal.op === "add_task" || proposal.op === "update_task"
+      ) {
+        if (proposal.data.location !== undefined) {
+          proposal.data.location = groundedLocation(proposal.data.location);
+        }
+      } else if (
+        proposal.op === "set_profile" &&
+        proposal.data.starting_location !== undefined
+      ) {
+        proposal.data.starting_location = groundedLocation(
+          proposal.data.starting_location,
+        );
+      }
     }
   }
   if (output.task_query != null) {
     if (output.proposal != null || output.plan_constraints != null) {
       throw new InputError("A task list cannot also mutate or plan");
     }
-    reply = taskList(ranked, output.task_query);
+    reply = taskList(ranked, output.task_query, groundedLocation);
   }
   if (proposal) {
     if (
@@ -272,7 +311,7 @@ export async function chat(db: Database, config: Config, input: unknown) {
     }
     const visit = output.plan_context == null
       ? null
-      : visitPlanContext(ranked, output.plan_context);
+      : visitPlanContext(ranked, output.plan_context, groundedLocation);
     reply = reply.slice(0, 4000);
     const candidates = visit?.tasks ?? ranked;
     const plan = fitPlan(candidates, budget, minutes);

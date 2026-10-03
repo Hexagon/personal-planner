@@ -573,7 +573,10 @@ Deno.test("informal task requests use generic validated context and deterministi
         assert(
           proposal.op === "add_task" && proposal.data.kind === "task",
         );
-        assert((proposal.data.location as RecordData).latitude === 59.3);
+        assert(
+          JSON.stringify(proposal.data.location) ===
+            JSON.stringify({ label: "Garage" }),
+        );
         assert(proposal.data.estimated_cost_minor === null);
       },
     },
@@ -746,6 +749,167 @@ Deno.test("informal task requests use generic validated context and deterministi
         `Unexpected status ${response.status} for ${testCase.prompt}`,
       );
       testCase.check(await response.json());
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("chat grounds proposal and destination coordinates in the request or saved locations", async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const place = { label: "Garage", latitude: 59.3, longitude: 18.1 };
+  const task = {
+    id,
+    description: "Service BMW",
+    status: "open",
+    base_priority: 3,
+    location: { ...place, label: "Workshop" },
+    estimated_cost_minor: 0,
+    duration_minutes: 30,
+  };
+  const config: Config = {
+    supabaseUrl: "https://database.example",
+    supabaseKey: "public-placeholder",
+    openrouterKey: "server-placeholder",
+    model: "test-model",
+    serviceKey: "server-service-placeholder",
+    origin: "http://localhost:8000",
+    port: 8000,
+  };
+  const sources = [
+    { prompt: "Use Garage", place, grounded: false },
+    { prompt: "Use Garage at 59.3, 18.1", place, grounded: true },
+    { prompt: "Use Garage at +59.300; +18.100", place, grounded: true },
+    { prompt: "Use Garage at -59.3, 18.1", place, grounded: false },
+    {
+      prompt: "Use Garage for 59.3 hours and 18.1 SEK",
+      place,
+      grounded: false,
+    },
+    {
+      prompt: "Use Garage at 159.3, 18.1",
+      place,
+      grounded: false,
+    },
+    {
+      prompt: "Use the saved Workshop",
+      place: { ...place, label: " workshop " },
+      grounded: true,
+    },
+    {
+      prompt: "Use the saved Home",
+      place: { ...place, label: "Home" },
+      grounded: true,
+    },
+    {
+      prompt: "Use Home",
+      place: { ...place, label: "Home", longitude: 19 },
+      grounded: false,
+    },
+  ];
+  const original = globalThis.fetch;
+  try {
+    for (const source of sources) {
+      for (
+        const route of [
+          "add_task",
+          "update_task",
+          "set_profile",
+          "task_query",
+          "plan_context",
+        ]
+      ) {
+        const field = route === "set_profile"
+          ? "starting_location"
+          : "location";
+        const output = route === "task_query"
+          ? { task_query: { destination: source.place, radius_km: 2 } }
+          : route === "plan_context"
+          ? {
+            plan_constraints: { budget_minor: 0, minutes: 60 },
+            plan_context: { destination: source.place, radius_km: 2 },
+          }
+          : {
+            proposal: {
+              op: route,
+              data: route === "set_profile"
+                ? { [field]: source.place }
+                : { id, description: task.description, [field]: source.place },
+            },
+          };
+        globalThis.fetch = (input, init) => {
+          const url = String(input);
+          const json = (value: unknown) =>
+            Promise.resolve(new Response(JSON.stringify(value)));
+          if (url.includes("openrouter.ai")) {
+            return json({
+              choices: [{
+                message: {
+                  content: JSON.stringify({ reply: "Review", ...output }),
+                },
+              }],
+            });
+          }
+          if (url.includes("/profiles?")) {
+            return json([{
+              id,
+              currency: "SEK",
+              timezone: "UTC",
+              starting_location: { ...place, label: "Home" },
+            }]);
+          }
+          if (url.includes("/tasks?")) return json([task]);
+          if (url.endsWith("/rpc/append_assistant_message")) {
+            const body = JSON.parse(String(init?.body));
+            return json([{
+              content: body.p_content,
+              proposal: body.p_proposal,
+            }]);
+          }
+          return json([]);
+        };
+        const message = await chat(
+          new Database(config, "test-session", id),
+          config,
+          source.prompt,
+        );
+        if (route === "task_query" || route === "plan_context") {
+          const content = String(message.content);
+          if (
+            content.includes("radius 2 km") || content.includes("within 2 km")
+          ) {
+            if (!source.grounded) {
+              throw new Error("Invented proximity accepted");
+            }
+          } else if (source.grounded) {
+            throw new Error("Grounded proximity dropped");
+          }
+          if (route === "task_query") {
+            const matched = content.indexOf("Service BMW") <
+              content.indexOf("Destination not established");
+            if (matched !== source.grounded) {
+              throw new Error("Unexpected saved destination match");
+            }
+          } else if (
+            content.includes("Calculated priority-first plan: Service BMW") !==
+              source.grounded
+          ) {
+            throw new Error("Unexpected proximity planning selection");
+          }
+        } else {
+          const proposal = message.proposal as { data: RecordData };
+          const expected = source.grounded
+            ? { ...source.place, label: source.place.label.trim() }
+            : { label: source.place.label.trim() };
+          if (
+            JSON.stringify(proposal.data[field]) !== JSON.stringify(expected)
+          ) {
+            throw new Error(
+              `Unexpected location for ${route}: ${source.prompt}`,
+            );
+          }
+        }
+      }
     }
   } finally {
     globalThis.fetch = original;

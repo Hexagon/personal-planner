@@ -17,7 +17,7 @@ function labelKey(value: string): string {
   return value.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function destinationContext(query: RecordData) {
+function destinationContext(query: RecordData, locate: typeof location) {
   const place = query.destination == null
     ? null
     : typeof query.destination === "string"
@@ -30,10 +30,14 @@ function destinationContext(query: RecordData) {
       radius <= 0 || radius > 1000 || place?.latitude == null)
   ) {
     throw new InputError(
-      "A radius must be within 0–1000 km and have destination coordinates",
+      "A radius must be greater than 0 and at most 1000 km, with destination coordinates",
     );
   }
-  return { place, radius: radius as number | null };
+  const grounded = locate(place);
+  return {
+    place: grounded,
+    radius: grounded?.latitude == null ? null : radius as number | null,
+  };
 }
 
 function matchesDestination(
@@ -51,9 +55,13 @@ function matchesDestination(
   );
 }
 
-export function visitPlanContext(tasks: RecordData[], input: unknown) {
+export function visitPlanContext(
+  tasks: RecordData[],
+  input: unknown,
+  locate: typeof location = location,
+) {
   const query = object(input);
-  const { place, radius } = destinationContext(query);
+  const { place, radius } = destinationContext(query, locate);
   if (!place) throw new InputError("A visit needs a destination");
   const ids = query.suggested_task_ids ?? [];
   if (!Array.isArray(ids) || ids.length > 100) {
@@ -104,11 +112,15 @@ export function visitPlanContext(tasks: RecordData[], input: unknown) {
 }
 
 // The model interprets intent; saved records determine membership and identity.
-export function taskList(tasks: RecordData[], input: unknown): string {
+export function taskList(
+  tasks: RecordData[],
+  input: unknown,
+  locate: typeof location = location,
+): string {
   const query = object(input);
   const kind = query.kind == null ? null : taskKind(query.kind);
   const category = query.category == null ? null : text(query.category, 100);
-  const { place, radius } = destinationContext(query);
+  const { place, radius } = destinationContext(query, locate);
   const eligible = tasks.filter((task) =>
     task.status === "open" &&
     (!kind || (task.kind ?? "task") === kind) &&

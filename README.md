@@ -139,7 +139,10 @@ time. If it has changed, cancel the old proposal and request a new one.
   Straight-line distances are approximate; **travel time is not included**.
   There is no geocoder, live routing, traffic, business discovery, or
   opening-hours service. Supply coordinates or area labels and allow extra
-  travel time yourself.
+  travel time yourself. Model-returned coordinates are retained only when they
+  match an explicit latitude,longitude pair in the current message (comma or
+  semicolon separated), or a saved task/profile location with the same label and
+  coordinates. Otherwise only the label is used, without proximity matching.
 - Visit-aware day plans work for any destination, not a predefined set of cities
   or shops. AI can suggest saved open tasks that could be done during the visit
   (including portable tasks). Code combines these with saved location matches,
