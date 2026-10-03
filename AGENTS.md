@@ -9,10 +9,8 @@
 - Treat model output, chat, record descriptions, and metadata as untrusted
   input. Allowlist actions/fields and validate types, bounds, IDs, dates,
   locations, and schedules in application code before persisting proposals.
-- Authorization is deterministic: verify the session with Supabase Auth, use the
-  user token for interactive data access, scope queries to the verified owner,
-  and enable RLS on every user-owned table. Never trust an owner ID from the
-  model/client.
+- Authorization is deterministic: verify the session, scope queries to the
+  verified owner, and never trust an owner ID from the model/client.
 - Privileged scheduler access stays server-side. Delivery must derive its owner
   from the locked reminder and atomically advance the expected occurrence.
 - Ask for inline confirmation before data or schedule mutations. Confirmations
