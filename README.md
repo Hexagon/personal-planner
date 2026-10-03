@@ -1,8 +1,8 @@
 # Personal Planner
 
-A small, self-hosted, chat-first personal/family planner. One Deno server,
-Supabase Auth/Postgres, one OpenRouter model, and Croner. The only interface is
-login and chat—including inline confirmations. One account represents one
+A small, chat-first personal/family planner. One Deno server, Supabase
+Auth/Postgres, one OpenRouter model, and scheduled reminders. The only interface
+is login and chat—including inline confirmations. One account represents one
 family's context; there is no cross-account household sharing.
 
 ## Setup
@@ -39,15 +39,35 @@ family's context; there is no cross-account household sharing.
    ```
 
    Open <http://localhost:8000>, create an account, and log in. For development
-   use `deno task dev`. Use a continuously running process; sleeping/serverless
-   deployments cannot deliver in-process reminders. Termination stops Croner and
-   gracefully shuts down HTTP. Place the app behind an HTTPS reverse proxy with
-   request-size limits, timeouts, and rate limiting for a public deployment.
+   use `deno task dev`. Self-hosted deployments need a continuously running
+   process for Croner reminders; termination stops Croner and gracefully shuts
+   down HTTP. For Deno Deploy, follow the deployment instructions below.
 
 Credentials belong to each self-hosting deployment, not individual app accounts.
 The browser receives only the Supabase URL and public key. Auth tokens are held
 in memory, not local storage; reloading requires login. `.env` is ignored by
 Git.
+
+### Deno Deploy
+
+Create a Deno Deploy project from this repository and set `src/deploy.ts` as its
+entrypoint. No frontend build is required; ensure the deployment includes
+`public/`, which the server reads to serve the login and chat pages. Configure
+`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `OPENROUTER_API_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `APP_ORIGIN` as server-side environment
+variables/secrets in the project settings. Set `APP_ORIGIN` to the exact HTTPS
+origin. Never expose the OpenRouter or service-role key to client-side code.
+
+Set the Supabase Auth Site URL to the deployed origin and allow the appropriate
+email-confirmation redirect URLs. Configure Supabase SMTP, signup restrictions,
+and Auth rate limits for public use. Add rate limiting at a trusted edge
+proxy/provider for the app's `/api/chat` and `/api/confirm` routes, and set
+provider spending limits for OpenRouter.
+
+The deploy entrypoint registers a native `Deno.cron` job that polls due
+reminders every minute. The same bounded query and atomic `deliver_reminder`
+RPC are used as in self-hosted mode. Cron invocations are separate from HTTP
+traffic, so reminder delivery does not depend on an always-running server.
 
 ## Try it in chat
 
@@ -107,13 +127,13 @@ time. If it has changed, cancel the old proposal and request a new one.
 
 ## Reminders
 
-Croner polls once a minute in UTC and computes each reminder's next occurrence
-in its IANA timezone. Only five-field cron expressions are accepted (minute
-resolution). Each tick processes at most 50 due reminders, with overrun
-protection. The database locks the reminder, verifies its expected occurrence,
-inserts a chat message scoped to its saved owner, and advances its next run
-**atomically**. Concurrent workers/retries cannot deliver the same occurrence
-twice.
+Self-hosted Croner and the Deno Deploy cron job poll once a minute in UTC and
+compute each reminder's next occurrence in its IANA timezone. Only five-field
+cron expressions are accepted (minute resolution). Each tick processes at most
+50 due reminders. The database locks the reminder, verifies its expected
+occurrence, inserts a chat message scoped to its saved owner, and advances its
+next run **atomically**. Concurrent workers/retries cannot deliver the same
+occurrence twice.
 
 After downtime, deliver **one** catch-up reminder and skip older missed
 occurrences. Invalid schedules are disabled with a generic error log so they
@@ -141,8 +161,10 @@ delivery.
 
 For a live deployment, use two test accounts to verify separate
 chat/assets/tasks, confirm and cancel proposals, and schedule a minute-level
-reminder. Real Supabase and OpenRouter integration requires your own credentials
-and should be checked before exposing the deployment.
+reminder. On Deno Deploy, verify the cron job is registered and that overlapping
+or retried invocations produce only one reminder message for an occurrence.
+Real Supabase and OpenRouter integration requires your own credentials and
+should be checked before exposing the deployment.
 
 ### Modules
 
@@ -152,11 +174,16 @@ and should be checked before exposing the deployment.
 - `src/planner/`: task tracking, geographic context, deterministic budget
   planning.
 - `src/validation.ts`: allowlisted inputs and Croner schedule validation.
-- `src/scheduler.ts`: bounded polling and transactional reminder delivery.
+- `src/scheduler.ts`: bounded polling and transactional reminder delivery;
+  `src/deploy.ts` registers the Deno Deploy cron trigger.
 - `public/`: dependency-free login/chat UI.
 - `supabase/migrations/`: schema, RLS, and confirmation/delivery RPCs.
 
-No agent framework, autonomous loops, frontend build step, or extra services.
+No agent framework, autonomous loops, frontend build step, or required extra
+services. The per-account in-flight request guard is in-memory and only applies
+within one server instance; it does not coordinate requests across Deno Deploy
+instances. Use edge rate limiting for public routes and rely on the database's
+transactional confirmation/delivery operations for cross-instance safety.
 Requests use one model call, at most 1,800 output tokens, a 30-second AI
 timeout, and one active mutation/chat request per account per process. Context
 summarizes at most 100 recent records per table and includes 12 recent messages.

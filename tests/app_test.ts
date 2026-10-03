@@ -1,7 +1,7 @@
 import { createHandler } from "../src/app.ts";
 import { Database } from "../src/db.ts";
 import type { Config } from "../src/config.ts";
-import { startScheduler } from "../src/scheduler.ts";
+import { runSchedulerTick } from "../src/scheduler.ts";
 
 const owner = "11111111-1111-4111-8111-111111111111";
 const config: Config = {
@@ -227,6 +227,11 @@ Deno.test("scheduler scopes delivery by persisted reminder ID and occurrence; no
   await mock((input, init) => {
     const url = String(input);
     if (url.includes("/reminders?")) {
+      assert(url.includes("limit=50"), "Reminder polling must stay bounded");
+      assert(
+        new Headers(init?.headers).get("apikey") === "privileged-placeholder",
+        "Reminder polling must use the server-only key",
+      );
       return Promise.resolve(response([{
         id: owner,
         user_id: owner,
@@ -240,14 +245,10 @@ Deno.test("scheduler scopes delivery by persisted reminder ID and occurrence; no
     calls.push(JSON.parse(String(init?.body)));
     return Promise.resolve(response(true));
   }, async () => {
-    const job = startScheduler({
+    await runSchedulerTick({
       ...config,
       serviceKey: "privileged-placeholder",
     });
-    assert(job);
-    // Startup trigger finishes before the next explicit trigger.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    job.stop();
     assert(calls.length === 1);
     const call = calls[0] as Record<string, unknown>;
     assert(
@@ -255,7 +256,6 @@ Deno.test("scheduler scopes delivery by persisted reminder ID and occurrence; no
     );
     assert(Date.parse(String(call.p_next_run)) > Date.now());
   });
-  assert(startScheduler(config));
 });
 
 Deno.test("invalid schedules are quarantined without starving healthy reminders", async () => {
@@ -292,13 +292,10 @@ Deno.test("invalid schedules are quarantined without starving healthy reminders"
     delivered = true;
     return Promise.resolve(response(true));
   }, async () => {
-    const job = startScheduler({
+    await runSchedulerTick({
       ...config,
       serviceKey: "privileged-placeholder",
     });
-    assert(job);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    job.stop();
     assert(disabled && delivered);
   });
 });
