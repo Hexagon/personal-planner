@@ -40,6 +40,10 @@ export function createHandler(config: Config, kv: Deno.Kv) {
       if (
         path.startsWith("/auth/") && ["GET", "POST"].includes(request.method)
       ) {
+        if (
+          request.method === "POST" &&
+          request.headers.get("Origin") !== config.origin
+        ) return json({ error: "Origin not allowed" }, 403);
         const response = await handleAuth(request, config);
         for (const [name, value] of Object.entries(headers)) {
           response.headers.set(name, value);

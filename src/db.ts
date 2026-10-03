@@ -442,6 +442,7 @@ export async function dueReminders(
   limit = 50,
 ): Promise<DueReminder[]> {
   const result: DueReminder[] = [];
+  const staleIndexes: Deno.KvKey[] = [];
   const end = ["planner", "due", `${before}\uffff`] as const;
   for await (
     const index of kv.list<string>({
@@ -451,7 +452,7 @@ export async function dueReminders(
   ) {
     const [, , , userId, id] = index.key as Deno.KvKey;
     if (typeof userId !== "string" || typeof id !== "string") {
-      await kv.atomic().delete(index.key).commit();
+      staleIndexes.push(index.key);
       continue;
     }
     const entry = await kv.get<RecordData>(key("reminders", userId, id));
@@ -466,8 +467,13 @@ export async function dueReminders(
         versionstamp: entry.versionstamp!,
       });
     } else {
-      await kv.atomic().delete(index.key).commit();
+      staleIndexes.push(index.key);
     }
+  }
+  if (staleIndexes.length) {
+    let transaction = kv.atomic();
+    for (const index of staleIndexes) transaction = transaction.delete(index);
+    await transaction.commit();
   }
   return result;
 }

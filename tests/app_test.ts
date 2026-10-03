@@ -100,6 +100,15 @@ Deno.test("public config is safe; APIs require same-origin requests and a valid 
       )).status === 403,
       "Cross-origin writes must be rejected",
     );
+    assert(
+      (await handler(
+        new Request(`${config.origin}/auth/signout`, {
+          method: "POST",
+          headers: { Origin: "https://attacker.example" },
+        }),
+      )).status === 403,
+      "Cross-origin Auth.js POSTs must be rejected",
+    );
     const cookie = await sessionCookie();
     const messages = await handler(
       request("/api/messages", undefined, undefined, cookie),
@@ -301,7 +310,7 @@ Deno.test("confirmation applies a task mutation once and uses a transactional ta
     );
     assert(
       (await db.list("tasks")).filter((row) => row.status === "open").length ===
-        300,
+        maxOpenTasks,
     );
   });
 });
