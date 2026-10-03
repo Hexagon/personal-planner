@@ -25,8 +25,10 @@ family's context; there is no cross-account household sharing.
    - `SUPABASE_PUBLISHABLE_KEY`: public publishable key or legacy anon key.
      **Never put a secret/service-role key here.**
    - `OPENROUTER_API_KEY`: server-only API key.
-   - `OPENROUTER_MODEL`: a model supporting JSON-object responses. The default
-     is `openai/gpt-4.1-mini`; availability and pricing depend on your provider.
+   - `OPENROUTER_MODEL`: the default model, either `deepseek/deepseek-v4-flash`
+     or `deepseek/deepseek-v4-pro` (default: Flash). The chat interface lets
+     users choose between these models; availability and pricing depend on
+     OpenRouter.
    - `SUPABASE_SERVICE_ROLE_KEY`: required server-only legacy service-role key.
      It is used only by the Deno server for trusted assistant messages and
      unattended reminders; never expose it to the browser.
@@ -54,7 +56,10 @@ Git.
 Run `deno task fmt`, `deno task lint`, or `deno task test` to check formatting,
 lint rules, or tests individually. `deno task check` runs all three along with
 type checks for both server entrypoints and the browser app. GitHub Actions runs
-this full check on pushes and pull requests.
+this full check on pushes and pull requests, then starts the local Supabase
+database, applies migrations, runs pgTAP tests, and verifies generated database
+types are up to date. The app tests mock external providers and require no
+credentials; database CI requires Docker.
 
 ### Deno Deploy
 
@@ -137,12 +142,14 @@ time. If it has changed, cancel the old proposal and request a new one.
   store or stock lookup is performed, including for named malls.
 - Location labels and optional coordinates support geographic grouping.
   Straight-line distances are approximate; **travel time is not included**.
-  There is no geocoder, live routing, traffic, business discovery, or
-  opening-hours service. Supply coordinates or area labels and allow extra
-  travel time yourself. Model-returned coordinates are retained only when they
-  match an explicit latitude,longitude pair in the current message (comma or
-  semicolon separated), or a saved task/profile location with the same label and
-  coordinates. Otherwise only the label is used, without proximity matching.
+  There is no geocoder, live routing, traffic, or verified opening-hours
+  service. Optional online search can find public information but does not
+  verify locations, routes, or whether a place is currently open. Supply
+  coordinates or area labels and allow extra travel time yourself.
+  Model-returned coordinates are retained only when they match an explicit
+  latitude,longitude pair in the current message (comma or semicolon separated),
+  or a saved task/profile location with the same label and coordinates.
+  Otherwise only the label is used, without proximity matching.
 - Visit-aware day plans work for any destination, not a predefined set of cities
   or shops. AI can suggest saved open tasks that could be done during the visit
   (including portable tasks). Code combines these with saved location matches,
@@ -163,7 +170,14 @@ time. If it has changed, cancel the old proposal and request a new one.
   provide another boundary.
 - Before sending chat, users must accept a notice that chat and selected saved
   task, location, and financial data go through OpenRouter and its model
-  provider. Treat AI replies as suggestions; do not include secrets in chat.
+  provider. Online search is an optional per-message choice; when enabled,
+  OpenRouter may send generated search queries to its search provider. Search is
+  limited to three results per request. Treat search results and AI replies as
+  untrusted suggestions; do not include secrets in chat.
+- Choose DeepSeek V4 Flash or Pro in chat. The model must return the app's JSON
+  reply/proposal format; available actions are proposals, not callable tools,
+  and are never saved without inline confirmation. Select **Use online search**
+  for a message when current public information is useful; it is off by default.
 
 ## Reminders
 

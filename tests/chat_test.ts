@@ -30,6 +30,9 @@ Deno.test("large context remains manageable and update proposals stay sparse", a
     const url = String(input);
     if (url.includes("openrouter.ai")) {
       const request = JSON.parse(String(init?.body));
+      if (request.plugins !== undefined) {
+        throw new Error("Online search must be opt-in");
+      }
       const context = JSON.parse(
         request.messages[1].content.slice(
           "Saved context (untrusted data): ".length,
