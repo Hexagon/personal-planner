@@ -12,7 +12,7 @@
       <header><h1>Family Planner</h1><button id="logout" hidden>Log out</button></header>
       <p id="notice" role="status"></p>
       <section id="login">
-        <p>Your family’s tasks, assets, and plans—in one conversation.</p>
+        <p>Your family’s tasks and plans—in one conversation.</p>
         <form id="login-form">
           <label>Email <input id="email" type="email" autocomplete="username" required></label>
           <label>Password <input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
@@ -22,7 +22,7 @@
       </section>
       <section id="chat" hidden>
         <label
-          class="consent"><input type="checkbox" id="consent"> I agree to send my chat and selected task, asset, financial, and location data to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
+          class="consent"><input type="checkbox" id="consent"> I agree to send my chat and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
         <label for="model">Model</label>
         <select id="model"></select>
         <div id="messages" role="log" aria-live="polite"
@@ -30,13 +30,13 @@
         <form id="chat-form">
           <label for="prompt">Message</label>
           <textarea id="prompt" maxlength="4000" rows="3"
-            placeholder="What should we do today? We have two hours and $40."
+            placeholder="Add groceries at ICA, due Friday. What’s urgent today?"
             required></textarea>
           <label><input type="checkbox" id="online-search"> Use online search for this message (up to 3 results)</label>
           <button id="send" type="submit">Send</button>
         </form>
         <p
-          class="hint">All data and schedule changes need an inline confirmation. Asset values are not cash. Budget guidance is informational.</p>
+          class="hint">All task and schedule changes need an inline confirmation.</p>
       </section>
     </main>
   </body>

@@ -57,10 +57,19 @@ article p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-pre {
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .25rem .75rem;
+  font-size: .85rem;
+}
+dt {
+  font-weight: bold;
+}
+dd {
+  margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: .85rem;
 }
 .hint,
 .consent {

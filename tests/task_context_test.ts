@@ -1,198 +1,138 @@
 import {
+  detailPrefix,
   resolveCompletion,
+  resolveReferences,
+  taskDetail,
   taskList,
-  visitPlanContext,
 } from "../src/planner/task-context.ts";
+import { groupByLocation } from "../src/planner/geo-planner.ts";
 import { InputError, type RecordData } from "../src/validation.ts";
 
-function assert(value: unknown) {
-  if (!value) throw new Error("Assertion failed");
+function assert(value: unknown, message = "Assertion failed"): asserts value {
+  if (!value) throw new Error(message);
 }
-const milk = {
-  id: "11111111-1111-4111-8111-111111111111",
-  description: "Buy milk",
-  kind: "purchase",
-  category: "Groceries",
-  status: "open",
-  destinations: ["Grocery store"],
-};
-const router = {
-  id: "22222222-2222-4222-8222-222222222222",
-  description: "Buy a new router",
-  kind: "purchase",
-  category: "Electronics",
-  status: "open",
-  destinations: ["Shopping centre"],
-  next_trip: true,
-};
-const service = {
-  id: "33333333-3333-4333-8333-333333333333",
-  description: "Service BMW",
-  kind: "task",
-  category: "Vehicle maintenance",
-  status: "open",
-  location: { label: "Garage", latitude: 59.3, longitude: 18.1 },
-};
+function rejects(callback: () => unknown) {
+  try {
+    callback();
+  } catch (error) {
+    if (error instanceof InputError) return;
+    throw error;
+  }
+  throw new Error("Expected invalid input to be rejected");
+}
+const today = "2026-01-10";
+const id = (n: number) =>
+  `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const tasks: RecordData[] = [
-  milk,
-  router,
-  service,
-  { ...milk, id: "done", description: "Bought bread", status: "done" },
-  { ...milk, id: "cancelled", description: "Buy cheese", status: "cancelled" },
+  {
+    id: id(1),
+    name: "Milk",
+    short_description: "Buy oat milk",
+    location_name: "ICA",
+    priority: 3,
+    due_date: "2026-01-10",
+    status: "open",
+  },
+  {
+    id: id(2),
+    name: "Router",
+    short_description: "Buy a new wifi router",
+    location_name: "ica ",
+    priority: 2,
+    due_date: null,
+    status: "open",
+  },
+  {
+    id: id(3),
+    name: "Car service",
+    short_description: "Book BMW service",
+    location_name: null,
+    priority: 4,
+    due_date: "2026-01-05",
+    status: "open",
+  },
+  {
+    id: id(4),
+    name: "Milk powder",
+    short_description: "For the baby",
+    location_name: "Pharmacy",
+    priority: 3,
+    due_date: "2026-03-01",
+    status: "open",
+  },
+  {
+    id: id(5),
+    name: "Library books",
+    short_description: "Return books",
+    location_name: "Library",
+    priority: 3,
+    due_date: null,
+    status: "done",
+  },
 ];
 
-Deno.test("shopping retrieval selects open purchases and generic categories", () => {
-  const list = taskList(tasks, { kind: "purchase" });
-  assert(list.includes("Buy milk") && list.includes("Buy a new router"));
-  assert(
-    !list.includes("BMW") && !list.includes("bread") &&
-      !list.includes("cheese"),
-  );
-  const category = taskList(tasks, { category: "vehicle maintenance" });
-  assert(category.includes("Service BMW") && !category.includes("milk"));
-});
-Deno.test("saved destination matches are separate from unverified availability", () => {
-  const list = taskList(tasks, {
-    kind: "purchase",
-    destination: " shopping CENTRE ",
-  });
-  assert(
-    list.indexOf("Buy a new router") <
-      list.indexOf("Destination not established"),
-  );
-  assert(
-    list.indexOf("Buy milk") > list.indexOf("Destination not established"),
-  );
-  assert(list.includes("next trip; no timed reminder"));
-  const mall = taskList(tasks, {
-    kind: "purchase",
-    destination: "Mall of Scandinavia",
-  });
-  assert(mall.includes("Saved destination matches:\nNone."));
-  assert(mall.includes("cannot verify stores, stock, or opening hours"));
-  assert(mall.includes("Buy milk") && mall.includes("Buy a new router"));
-  const garage = taskList(tasks, { destination: "Garage" });
-  assert(
-    garage.indexOf("Service BMW") <
-      garage.indexOf("Destination not established"),
-  );
-});
-Deno.test("batch references resolve all open tasks without partial or guessed matches", () => {
-  const completion = resolveCompletion(tasks, { items: ["milk", "router"] });
-  assert(
-    JSON.stringify(completion.ids) === JSON.stringify([milk.id, router.id]),
-  );
-  assert(resolveCompletion(tasks, { items: ["BMW"] }).ids?.[0] === service.id);
-  assert(resolveCompletion(tasks, { items: ["bread"] }).ids === null);
-  assert(resolveCompletion(tasks, { items: ["milk", "missing"] }).ids === null);
-  assert(resolveCompletion(tasks, { items: ["milk", milk.id] }).ids === null);
-  assert(
-    resolveCompletion([
-      ...tasks,
-      { ...milk, id: "other", description: "Buy oat milk" },
-    ], { items: ["milk", "router"] }).clarification?.includes("Which task"),
-  );
-  assert(resolveCompletion(tasks, { items: ["silk"] }).ids === null);
-});
-Deno.test("large task lists retain bounds without falsely reporting no uncertain items", () => {
-  const many = Array.from({ length: 101 }, (_, i) => ({
-    ...milk,
-    id: String(i),
-    description: `Item ${i}`,
-  }));
-  many.push({ ...milk, id: "other", description: "Unknown", destinations: [] });
-  const list = taskList(many, { destination: "Grocery store" });
-  assert(!list.includes("Item 100"));
-  assert(list.includes("Additional items omitted"));
+Deno.test("location lists filter case-insensitively from saved open tasks", () => {
+  const list = taskList(tasks, { location_name: "Ica" }, today);
+  assert(list.includes("Open tasks (at Ica): 2"), list);
+  assert(list.includes("Milk — Buy oat milk") && list.includes("Router"));
+  assert(!list.includes("Car service") && !list.includes("Library"));
 });
 
-Deno.test("visit planning combines saved matches with AI possibilities for any destination", () => {
-  const local = {
-    ...service,
-    description: "Return a parcel",
-    destinations: ["Copenhagen"],
-    location: null,
-  };
-  const records = [local, milk, router];
-  for (const destination of ["Copenhagen", "Somewhere else"]) {
-    const context = visitPlanContext(records, {
-      destination,
-      suggested_task_ids: [milk.id],
-    });
-    assert(context.tasks.some((task) => task.id === milk.id));
-    assert(
-      context.tasks.some((task) => task.id === local.id) ===
-        (destination === "Copenhagen"),
-    );
-    assert(!context.tasks.some((task) => task.id === router.id));
-    assert(
-      context.summary.includes("AI-suggested possibilities, not verified"),
-    );
-    assert(
-      context.summary.includes("Visit/travel time and cost are not included"),
-    );
-  }
+Deno.test("unfiltered lists are grouped by location with unlocated tasks last", () => {
+  const list = taskList(tasks, {}, today);
+  assert(list.indexOf("ICA:") < list.indexOf("Pharmacy:"), list);
+  assert(list.indexOf("Pharmacy:") < list.indexOf("No location:"), list);
+  assert(!list.includes("Library books"));
+  const groups = groupByLocation(tasks.slice(0, 3));
+  assert(groups.length === 2 && groups[0].tasks.length === 2);
 });
-Deno.test("coordinate proximity uses validated generic destinations and explicit radii", () => {
-  const nearby = {
-    ...service,
-    location: { label: "Parcel counter", latitude: 55.677, longitude: 12.569 },
-  };
-  const far = {
-    ...router,
-    location: { label: "Copenhagen", latitude: 59.3, longitude: 18.1 },
-  };
-  const destination = { label: "Visit", latitude: 55.676, longitude: 12.568 };
-  const context = visitPlanContext([nearby, far], {
-    destination,
-    radius_km: 2,
-  });
-  assert(context.tasks.length === 1 && context.tasks[0].id === nearby.id);
-  assert(
-    visitPlanContext([{ ...milk, destinations: ["Visit"] }], {
-      destination,
-      radius_km: 2,
-    }).tasks.length === 0,
+
+Deno.test("urgency and status filters use code-calculated urgency", () => {
+  const urgent = taskList(
+    tasks,
+    { urgency: ["overdue", "today", "soon"] },
+    today,
   );
-  const list = taskList([nearby, far], { destination, radius_km: 2 });
-  assert(
-    list.indexOf("Service BMW") < list.indexOf("Destination not established"),
+  assert(urgent.includes("Milk —") && urgent.includes("Car service"), urgent);
+  assert(!urgent.includes("Router") && !urgent.includes("Milk powder"));
+  assert(urgent.includes("(overdue)") && urgent.includes("(today)"));
+  const done = taskList(tasks, { status: "done" }, today);
+  assert(done.includes("Library books") && !done.includes("Milk"));
+  rejects(() => taskList(tasks, { urgency: ["urgent"] }, today));
+  rejects(() => taskList(tasks, { status: "archived" }, today));
+});
+
+Deno.test("references resolve by exact name or ID and never guess", () => {
+  const exact = resolveReferences(tasks, ["milk"]);
+  assert(exact.ids?.[0] === id(1), "Exact name wins over partial matches");
+  assert(resolveReferences(tasks, [id(4)]).ids?.[0] === id(4));
+  const ambiguous = resolveReferences(
+    [...tasks, { ...tasks[0], id: id(6), name: "Milk chocolate" }]
+      .filter((task) => task.id !== id(1)),
+    ["milk"],
   );
   assert(
-    list.indexOf("Buy a new router") >
-      list.indexOf("Destination not established"),
+    ambiguous.ids === null && ambiguous.clarification.includes("Which task"),
   );
-  for (
-    const query of [
-      { destination, radius_km: 0 },
-      { destination, radius_km: -1 },
-      { destination, radius_km: Infinity },
-      { destination, radius_km: 1001 },
-      { destination, radius_km: "2" },
-      { destination: "Copenhagen", radius_km: 2 },
-      { destination: { label: "Visit", latitude: 91, longitude: 0 } },
-      { destination, suggested_task_ids: [milk.id] },
-      { destination, suggested_task_ids: [nearby.id, nearby.id] },
-      { destination, suggested_task_ids: ["invalid"] },
-    ]
-  ) {
-    try {
-      visitPlanContext([nearby, far], query);
-      throw new Error("Invalid context accepted");
-    } catch (error) {
-      assert(error instanceof InputError);
-    }
-  }
-  for (const radius_km of [0, -1, 1001]) {
-    try {
-      taskList(tasks, { destination, radius_km });
-      throw new Error("Invalid radius accepted");
-    } catch (error) {
-      assert(
-        error instanceof InputError &&
-          error.message.includes("greater than 0 and at most 1000 km"),
-      );
-    }
-  }
-  assert(taskList(tasks, { destination, radius_km: 1000 }).includes("1000 km"));
+  const missing = resolveReferences(tasks, ["Lawn"]);
+  assert(missing.ids === null && missing.clarification.includes("couldn't"));
+  const batch = resolveCompletion(tasks, { items: ["Milk", "Router"] });
+  assert(batch.ids?.join() === [id(1), id(2)].join());
+  const finished = resolveCompletion(tasks, { items: ["Library books"] });
+  assert(finished.ids === null, "Completion only resolves open tasks");
+  const twice = resolveCompletion(tasks, { items: ["Milk", id(1)] });
+  assert(twice.ids === null);
+  rejects(() => resolveCompletion(tasks, { items: [] }));
+});
+
+Deno.test("task details show the saved full description as text", () => {
+  const detail = taskDetail({
+    ...tasks[2],
+    full_description: "Ask about <b>brakes</b>",
+    created_at: "2026-01-01T10:00:00Z",
+  }, today);
+  assert(detail.startsWith(detailPrefix));
+  assert(detail.includes("Full description:\nAsk about <b>brakes</b>"));
+  assert(detail.includes("created 2026-01-01"));
+  assert(taskDetail(tasks[0], today).includes("No full description saved."));
 });

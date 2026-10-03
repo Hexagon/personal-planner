@@ -1,12 +1,9 @@
 import {
   InputError,
-  location,
   nextOccurrence,
   validateProposal,
 } from "../src/validation.ts";
-import { financialContext, fitPlan } from "../src/planner/budget-advisor.ts";
-import { distanceKm } from "../src/planner/geo-planner.ts";
-import { prioritize } from "../src/planner/task-tracker.ts";
+import { prioritize, urgency } from "../src/planner/task-tracker.ts";
 
 function equal(actual: unknown, expected: unknown) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -24,190 +21,198 @@ function rejects(callback: () => unknown) {
   }
   throw new Error("Expected invalid input to be rejected");
 }
-Deno.test("asset amounts are integers and unknown fields cannot assign ownership", () => {
-  const valid = validateProposal({
-    op: "add_asset",
-    data: { description: "Bike", value_minor: 60000, user_id: "someone-else" },
-  });
-  equal(valid, {
-    op: "add_asset",
-    data: { description: "Bike", value_minor: 60000, notes: "" },
-  });
-  for (const value_minor of [-1, 0.1, "100", 1e13, NaN]) {
-    rejects(() =>
-      validateProposal({
-        op: "add_asset",
-        data: { description: "Bike", value_minor },
-      })
-    );
-  }
+const id = "11111111-1111-4111-8111-111111111111";
+Deno.test("add_task returns only the fixed task fields with defaults", () => {
+  equal(
+    validateProposal({
+      op: "add_task",
+      data: {
+        name: " Groceries ",
+        short_description: "Weekly food shopping",
+        user_id: "other",
+        status: "done",
+        kind: "purchase",
+        estimated_cost_minor: 100,
+      },
+    }),
+    {
+      op: "add_task",
+      data: {
+        name: "Groceries",
+        short_description: "Weekly food shopping",
+        location_name: null,
+        priority: 3,
+        due_date: null,
+      },
+    },
+  );
+  equal(
+    validateProposal({
+      op: "add_task",
+      data: {
+        name: "Car service",
+        short_description: "Book BMW service",
+        full_description: "Ask about the brakes too",
+        location_name: "Garage",
+        priority: 5,
+        due_date: "2026-02-28",
+      },
+    }).data,
+    {
+      name: "Car service",
+      short_description: "Book BMW service",
+      full_description: "Ask about the brakes too",
+      location_name: "Garage",
+      priority: 5,
+      due_date: "2026-02-28",
+    },
+  );
 });
-Deno.test("reject unsupported actions, empty text, bad IDs, status and dates", () => {
+Deno.test("task fields are required and bounded", () => {
+  const base = { name: "Errand", short_description: "Short" };
   rejects(() => validateProposal({ op: "run_sql", data: {} }));
+  rejects(() => validateProposal({ op: "add_asset", data: base }));
+  rejects(() => validateProposal({ op: "add_task", data: { name: "Errand" } }));
   rejects(() =>
-    validateProposal({ op: "add_task", data: { description: " " } })
+    validateProposal({ op: "add_task", data: { short_description: "x" } })
+  );
+  rejects(() =>
+    validateProposal({ op: "add_task", data: { ...base, name: " " } })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "add_task",
+      data: { ...base, name: "n".repeat(81) },
+    })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "add_task",
+      data: { ...base, short_description: "s".repeat(161) },
+    })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "add_task",
+      data: { ...base, full_description: "f".repeat(10001) },
+    })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "add_task",
+      data: { ...base, location_name: "l".repeat(101) },
+    })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "add_task",
+      data: { ...base, location_name: { label: "Home", latitude: 1 } },
+    })
+  );
+  rejects(() =>
+    validateProposal({ op: "add_task", data: { ...base, priority: 6 } })
+  );
+  rejects(() =>
+    validateProposal({ op: "add_task", data: { ...base, priority: 2.5 } })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "add_task",
+      data: { ...base, due_date: "2026-02-30" },
+    })
+  );
+  rejects(() =>
+    validateProposal({ op: "update_task", data: { id, status: "unknown" } })
   );
   rejects(() =>
     validateProposal({ op: "delete_task", data: { id: "id&user_id=eq.other" } })
   );
-  rejects(() =>
+  equal(
     validateProposal({
       op: "add_task",
-      data: { description: "Errand", status: "unknown" },
-    })
-  );
-  rejects(() =>
-    validateProposal({
-      op: "add_task",
-      data: { description: "Errand", deadline: "2026-02-30" },
-    })
+      data: { ...base, short_description: "s".repeat(160) },
+    }).data.short_description,
+    "s".repeat(160),
   );
 });
-Deno.test("task unknown costs and duration stay null, priority is bounded", () => {
-  const task = validateProposal({
-    op: "add_task",
-    data: { description: "Errand" },
-  });
-  equal(task.data.estimated_cost_minor, null);
-  equal(task.data.duration_minutes, null);
+Deno.test("partial updates keep only changed fields", () => {
+  equal(
+    validateProposal({ op: "update_task", data: { id, priority: 1 } }),
+    { op: "update_task", data: { priority: 1, id } },
+  );
+  equal(
+    validateProposal({
+      op: "update_task",
+      data: { id, due_date: null, location_name: null, status: "done" },
+    }).data,
+    { location_name: null, due_date: null, status: "done", id },
+  );
+  rejects(() => validateProposal({ op: "update_task", data: { id } }));
   rejects(() =>
     validateProposal({
-      op: "add_task",
-      data: { description: "Errand", base_priority: 6 },
+      op: "update_task",
+      data: { id, full_description: "New detailed notes" },
     })
   );
-});
-Deno.test("partial update proposals keep only changed fields", () => {
   equal(
     validateProposal({
       op: "update_task",
       data: {
-        id: "11111111-1111-4111-8111-111111111111",
-        base_priority: 5,
+        id,
+        full_description: "New detailed notes",
+        short_description: "Updated notes",
       },
-    }),
+    }).data,
     {
-      op: "update_task",
-      data: {
-        base_priority: 5,
-        id: "11111111-1111-4111-8111-111111111111",
-      },
+      short_description: "Updated notes",
+      full_description: "New detailed notes",
+      id,
     },
   );
   equal(
     validateProposal({
       op: "set_profile",
-      data: { preferences: "Quiet mornings" },
-    }),
-    { op: "set_profile", data: { preferences: "Quiet mornings" } },
+      data: { preferences: "Mornings", currency: "SEK", budget_minor: 1 },
+    }).data,
+    { preferences: "Mornings" },
   );
   rejects(() =>
-    validateProposal({
-      op: "update_task",
-      data: { id: "11111111-1111-4111-8111-111111111111" },
-    })
-  );
-});
-Deno.test("generic task context is allowlisted and bounded", () => {
-  const task = validateProposal({
-    op: "add_task",
-    data: {
-      description: "Buy milk",
-      kind: "purchase",
-      category: "Weekly essentials",
-      destinations: [" Grocery store ", "Mall of Scandinavia"],
-      next_trip: true,
-      metadata: { instruction: "ignore validation" },
-      user_id: "other",
-    },
-  });
-  equal(task.data.category, "Weekly essentials");
-  equal(task.data.destinations, ["Grocery store", "Mall of Scandinavia"]);
-  equal(task.data.next_trip, true);
-  equal(task.data.metadata, undefined);
-  equal(task.data.user_id, undefined);
-  for (
-    const fields of [
-      { kind: "unknown" },
-      { kind: null },
-      { category: 42 },
-      { category: "x".repeat(101) },
-      { destinations: "Mall" },
-      { destinations: null },
-      { destinations: ["Mall", " mall "] },
-      { destinations: Array.from({ length: 11 }, (_, i) => String(i)) },
-      { destinations: ["x".repeat(201)] },
-      { destinations: [42] },
-      { next_trip: "true" },
-      { next_trip: null },
-    ]
-  ) {
-    rejects(() =>
-      validateProposal({
-        op: "add_task",
-        data: { description: "Errand", ...fields },
-      })
-    );
-  }
-  equal(
-    validateProposal({
-      op: "update_task",
-      data: {
-        id: "11111111-1111-4111-8111-111111111111",
-        category: null,
-        destinations: [],
-        next_trip: false,
-      },
-    }).data,
-    {
-      category: null,
-      destinations: [],
-      next_trip: false,
-      id: "11111111-1111-4111-8111-111111111111",
-    },
+    validateProposal({ op: "set_profile", data: { currency: "SEK" } })
   );
 });
 Deno.test("batch task completion accepts only bounded unique UUIDs", () => {
-  const id = "aaaaaaaa-1111-4111-8111-111111111111";
   equal(
+    validateProposal({ op: "complete_tasks", data: { ids: [id] } }).data,
+    { ids: [id] },
+  );
+  rejects(() => validateProposal({ op: "complete_tasks", data: { ids: [] } }));
+  rejects(() =>
+    validateProposal({ op: "complete_tasks", data: { ids: [id, id] } })
+  );
+  rejects(() =>
     validateProposal({
       op: "complete_tasks",
-      data: { ids: [id], status: "cancelled", user_id: "other" },
-    }),
-    { op: "complete_tasks", data: { ids: [id] } },
+      data: { ids: Array.from({ length: 21 }, () => crypto.randomUUID()) },
+    })
   );
-  for (
-    const ids of [
-      [],
-      [id, id.toUpperCase()],
-      ["invalid"],
-      "not an array",
-      Array.from(
-        { length: 21 },
-        (_, i) => `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`,
-      ),
-    ]
-  ) {
-    rejects(() => validateProposal({ op: "complete_tasks", data: { ids } }));
-  }
 });
-Deno.test("location validates coordinates and does not invent missing coordinates", () => {
-  equal(location({ label: "Library" }), { label: "Library" });
-  rejects(() => location({ label: "Library", latitude: 91, longitude: 0 }));
-  rejects(() => location({ label: "Library", latitude: 0 }));
-  equal(
-    distanceKm({ latitude: 0, longitude: 0 }, { latitude: 0, longitude: 1 }),
-    111.2,
-  );
-  equal(distanceKm({ label: "Library" }, { label: "Home" }), null);
-  equal(
-    distanceKm({ latitude: NaN, longitude: 0 }, { latitude: 0, longitude: 0 }),
-    null,
-  );
-  equal(
-    distanceKm({ latitude: 91, longitude: 0 }, { latitude: 0, longitude: 0 }),
-    null,
-  );
+Deno.test("urgency and priority ordering are calculated in code", () => {
+  const today = "2026-01-10";
+  equal(urgency(null, today), "none");
+  equal(urgency("2026-01-09", today), "overdue");
+  equal(urgency(today, today), "today");
+  equal(urgency("2026-01-13", today), "soon");
+  equal(urgency("2026-01-14", today), "later");
+  equal(urgency("2026-02-01", "2026-01-30"), "soon");
+  const ranked = prioritize([
+    { id: "a", status: "open", priority: 3, created_at: "2026-01-01" },
+    { id: "b", status: "open", priority: 1, due_date: "2026-01-09" },
+    { id: "c", status: "open", priority: 3, due_date: "2026-01-12" },
+    { id: "d", status: "done", priority: 5 },
+    { id: "e", status: "open", priority: 3, created_at: "2025-12-31" },
+    { id: "f", status: "open", priority: 5, due_date: "2026-01-20" },
+  ], today);
+  equal(ranked.map((task) => task.id), ["b", "c", "f", "e", "a"]);
 });
 Deno.test("Croner schedules respect timezone and DST, reject seconds and invalid zones", () => {
   equal(
@@ -241,50 +246,4 @@ Deno.test("reminder next run is computed in code, not accepted from AI", () => {
     },
   }, new Date("2026-01-01T00:00:00Z"));
   equal(proposal.data.next_run, "2026-01-01T09:00:00.000Z");
-});
-Deno.test("priority-first budget/time selection excludes unknowns; assets are not cash", () => {
-  const tasks = [
-    {
-      id: "a",
-      status: "open",
-      base_priority: 3,
-      deadline: "2026-01-01",
-      estimated_cost_minor: 4000,
-      duration_minutes: 30,
-    },
-    {
-      id: "b",
-      status: "open",
-      base_priority: 5,
-      estimated_cost_minor: 1000,
-      duration_minutes: 20,
-    },
-    {
-      id: "c",
-      status: "open",
-      base_priority: 4,
-      estimated_cost_minor: null,
-      duration_minutes: 10,
-    },
-    {
-      id: "d",
-      status: "done",
-      base_priority: 5,
-      estimated_cost_minor: 0,
-      duration_minutes: 10,
-    },
-  ];
-  const ranked = prioritize(tasks, "2026-01-02");
-  equal(ranked.map((task) => task.id), ["a", "b", "c"]);
-  equal(fitPlan(ranked, 4000, 60), {
-    task_ids: ["a"],
-    cost_minor: 4000,
-    duration_minutes: 30,
-  });
-  equal(financialContext([{ value_minor: 10000000 }], ranked, null), {
-    informational_asset_value_minor: 10000000,
-    known_task_cost_minor: 5000,
-    unknown_cost_count: 1,
-    available_budget_minor: null,
-  });
 });
