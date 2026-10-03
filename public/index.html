@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Family Planner</title>
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <header><h1>Family Planner</h1><button id="logout" hidden>Log out</button></header>
+      <p id="notice" role="status"></p>
+      <section id="login">
+        <p>Your family’s tasks, assets, and plans—in one conversation.</p>
+        <form id="login-form">
+          <label>Email <input id="email" type="email" autocomplete="username" required></label>
+          <label>Password <input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
+          <button type="submit">Log in</button>
+          <button id="signup" type="button">Create account</button>
+        </form>
+      </section>
+      <section id="chat" hidden>
+        <label
+          class="consent"><input type="checkbox" id="consent"> I agree to send my chat and selected task, asset, financial, and location data to OpenRouter and its model provider. Do not include secrets.</label>
+        <div id="messages" aria-label="Conversation"></div>
+        <form id="chat-form">
+          <label for="prompt">Message</label>
+          <textarea id="prompt" maxlength="4000" rows="3"
+            placeholder="What should we do today? We have two hours and $40."
+            required></textarea>
+          <button id="send" type="submit">Send</button>
+        </form>
+        <p
+          class="hint">All data and schedule changes need an inline confirmation. Asset values are not cash. Budget guidance is informational.</p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,74 @@
+:root {
+  color-scheme: light dark;
+  font: 16px/1.5 system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  background: light-dark(#f5f7fa, #141821);
+}
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+h1 {
+  font-size: 1.5rem;
+}
+label {
+  display: block;
+  margin: .75rem 0;
+}
+input:not([type="checkbox"]),
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: .75rem;
+  font: inherit;
+  border: 1px solid #8893a5;
+  border-radius: .5rem;
+}
+button {
+  padding: .65rem 1rem;
+  margin: .25rem .5rem .25rem 0;
+  border-radius: .5rem;
+  cursor: pointer;
+  font: inherit;
+}
+button:disabled {
+  opacity: .5;
+  cursor: wait;
+}
+article {
+  background: light-dark(white, #222b38);
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: .75rem;
+}
+article.user {
+  border-left: 4px solid #4c8fea;
+}
+article p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: .85rem;
+}
+.hint,
+.consent {
+  font-size: .85rem;
+}
+#notice {
+  min-height: 1.5rem;
+}
+[hidden] {
+  display: none !important;
+}

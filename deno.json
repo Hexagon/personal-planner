@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "start": "deno run --env-file=.env --allow-env --allow-net --allow-read=public src/main.ts",
+    "dev": "deno run --env-file=.env --allow-env --allow-net --allow-read=public --watch=src,public src/main.ts",
+    "check": "deno fmt --check && deno lint && deno check src/main.ts public/app.js && deno test"
+  },
+  "imports": {
+    "croner": "npm:croner@10.0.1"
+  }
+}
