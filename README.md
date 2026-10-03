@@ -137,9 +137,9 @@ time. If it has changed, cancel the old proposal and request a new one.
 - Before sending chat, users must accept a notice that chat and selected saved
   task, location, and financial data go through OpenRouter and its model
   provider. Online search is an optional per-message choice; when enabled,
-  OpenRouter may send generated search queries to its search provider. Search
-  is limited to three results per request. Treat search results and AI replies
-  as untrusted suggestions; do not include secrets in chat.
+  OpenRouter may send generated search queries to its search provider. Search is
+  limited to three results per request. Treat search results and AI replies as
+  untrusted suggestions; do not include secrets in chat.
 - Choose DeepSeek V4 Flash or Pro in chat. The model must return the app's JSON
   reply/proposal format; available actions are proposals, not callable tools,
   and are never saved without inline confirmation. Select **Use online search**
