@@ -66,7 +66,9 @@ function render(messages) {
   const container = element("messages");
   for (const message of messages) {
     const previous = renderedMessages.get(message.id);
-    if (previous && previous.dataset.actionState === String(message.action_state)) {
+    if (
+      previous && previous.dataset.actionState === String(message.action_state)
+    ) {
       continue;
     }
     const article = previous ?? document.createElement("article");
@@ -97,9 +99,11 @@ function render(messages) {
                   "Proposal status changed elsewhere. See refreshed status.",
                 );
               } else {
-                notice(cancel
-                  ? "Proposal cancelled."
-                  : "Confirmation processed. See proposal status.");
+                notice(
+                  cancel
+                    ? "Proposal cancelled."
+                    : "Confirmation processed. See proposal status.",
+                );
               }
             });
           article.append(button);

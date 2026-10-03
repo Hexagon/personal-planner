@@ -72,8 +72,8 @@ proxy/provider for the app's `/api/chat` and `/api/confirm` routes, and set
 provider spending limits for OpenRouter.
 
 The deploy entrypoint registers a native `Deno.cron` job that polls due
-reminders every minute. The same bounded query and atomic `deliver_reminder`
-RPC are used as in self-hosted mode. Cron invocations are separate from HTTP
+reminders every minute. The same bounded query and atomic `deliver_reminder` RPC
+are used as in self-hosted mode. Cron invocations are separate from HTTP
 traffic, so reminder delivery does not depend on an always-running server.
 
 ## Try it in chat
@@ -170,8 +170,8 @@ For a live deployment, use two test accounts to verify separate
 chat/assets/tasks, confirm and cancel proposals, and schedule a minute-level
 reminder. On Deno Deploy, verify the cron job is registered and that overlapping
 or retried invocations produce only one reminder message for an occurrence.
-Real Supabase and OpenRouter integration requires your own credentials and
-should be checked before exposing the deployment.
+Real Supabase and OpenRouter integration requires your own credentials and should be
+checked before exposing the deployment.
 
 ### Modules
 
