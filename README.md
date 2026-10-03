@@ -48,6 +48,13 @@ The browser receives only the Supabase URL and public key. Auth tokens are held
 in memory, not local storage; reloading requires login. `.env` is ignored by
 Git.
 
+## Checks
+
+Run `deno task fmt`, `deno task lint`, or `deno task test` to check formatting,
+lint rules, or tests individually. `deno task check` runs all three along with
+type checks for both server entrypoints and the browser app. GitHub Actions runs
+this full check on pushes and pull requests.
+
 ### Deno Deploy
 
 Create a Deno Deploy project from this repository and set `src/deploy.ts` as its
@@ -65,8 +72,8 @@ proxy/provider for the app's `/api/chat` and `/api/confirm` routes, and set
 provider spending limits for OpenRouter.
 
 The deploy entrypoint registers a native `Deno.cron` job that polls due
-reminders every minute. The same bounded query and atomic `deliver_reminder`
-RPC are used as in self-hosted mode. Cron invocations are separate from HTTP
+reminders every minute. The same bounded query and atomic `deliver_reminder` RPC
+are used as in self-hosted mode. Cron invocations are separate from HTTP
 traffic, so reminder delivery does not depend on an always-running server.
 
 ## Try it in chat
@@ -162,9 +169,9 @@ delivery.
 For a live deployment, use two test accounts to verify separate
 chat/assets/tasks, confirm and cancel proposals, and schedule a minute-level
 reminder. On Deno Deploy, verify the cron job is registered and that overlapping
-or retried invocations produce only one reminder message for an occurrence.
-Real Supabase and OpenRouter integration requires your own credentials and
-should be checked before exposing the deployment.
+or retried invocations produce only one reminder message for an occurrence. Real
+Supabase and OpenRouter integration requires your own credentials and should be
+checked before exposing the deployment.
 
 ### Modules
 
