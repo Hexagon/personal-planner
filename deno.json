@@ -8,6 +8,7 @@
     "check": "deno task fmt && deno task lint && deno check src/main.ts public/app.js && deno check --unstable-cron src/deploy.ts && deno task test"
   },
   "imports": {
+    "@auth/core": "npm:@auth/core@0.41.3",
     "croner": "npm:croner@10.0.1"
   }
 }
