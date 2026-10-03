@@ -161,8 +161,10 @@ delivery.
 
 For a live deployment, use two test accounts to verify separate
 chat/assets/tasks, confirm and cancel proposals, and schedule a minute-level
-reminder. Real Supabase and OpenRouter integration requires your own credentials
-and should be checked before exposing the deployment.
+reminder. On Deno Deploy, verify the cron job is registered and that overlapping
+or retried invocations produce only one reminder message for an occurrence.
+Real Supabase and OpenRouter integration requires your own credentials and
+should be checked before exposing the deployment.
 
 ### Modules
 

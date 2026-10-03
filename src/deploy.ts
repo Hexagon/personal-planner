@@ -4,7 +4,5 @@ import { runSchedulerTick } from "./scheduler.ts";
 
 const config = loadConfig();
 
-Deno.cron("deliver-due-reminders", "* * * * *", () =>
-  runSchedulerTick(config)
-);
+Deno.cron("deliver-reminders", "* * * * *", () => runSchedulerTick(config));
 Deno.serve(createHandler(config));
