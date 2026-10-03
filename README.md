@@ -69,7 +69,8 @@ Review the exact structured proposal displayed in chat, then **Confirm** or
 tasks, deleting data, setting preferences, and creating/removing reminders all
 use the same flow. One action is proposed per turn. To alter a reminder, remove
 it and create a new one. Profile updates replace the displayed preference
-fields.
+fields. Monetary proposals are bound to the currency at proposal time. If it has
+changed, cancel the old proposal and request a new one.
 
 ## Planning and safety boundaries
 
@@ -110,8 +111,9 @@ inserts a chat message scoped to its saved owner, and advances its next run
 twice.
 
 After downtime, deliver **one** catch-up reminder and skip older missed
-occurrences. Invalid schedules are skipped and retried with a generic error log;
-inspect/fix them in Supabase if records were edited outside the app. Reminders
+occurrences. Invalid schedules are disabled with a generic error log so they
+cannot block other users' reminders; remove and recreate them with valid
+schedules. Transient delivery failures are retried on the next tick. Reminders
 appear in chat (refreshed every 30 seconds while visible), not email/push
 notifications. Scheduled planning is a prompt to open chat and plan; it never
 invokes AI or changes tasks or budgets unattended. Running without the

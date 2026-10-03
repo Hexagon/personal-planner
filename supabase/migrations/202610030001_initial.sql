@@ -134,7 +134,8 @@ begin
 
   if jsonb_typeof(v_proposal -> 'op') is distinct from 'string'
      or jsonb_typeof(v_proposal -> 'data') is distinct from 'object'
-     or v_proposal - array['op', 'data'] <> '{}'::jsonb then
+     or v_proposal - array['op', 'data', 'currency'] <> '{}'::jsonb
+     or (v_proposal ? 'currency' and jsonb_typeof(v_proposal -> 'currency') <> 'string') then
     raise exception 'Invalid proposal';
   end if;
   v_op := v_proposal ->> 'op';
@@ -157,6 +158,17 @@ begin
     when 'delete_reminder' then v_allowed := array['id'];
     else raise exception 'Unsupported proposal operation';
   end case;
+
+  if v_op = any(array['add_asset', 'update_asset', 'add_task', 'update_task', 'set_profile']) then
+    if jsonb_typeof(v_proposal -> 'currency') is distinct from 'string' then
+      raise exception 'Proposal currency required';
+    end if;
+    if v_proposal ->> 'currency' <> coalesce(
+      (select currency from public.profiles where id = v_user_id), 'USD'
+    ) then
+      raise exception 'Proposal currency no longer matches profile currency';
+    end if;
+  end if;
 
   for v_field in select key, value from jsonb_each(v_data) loop
     if not (v_field.key = any(v_allowed)) then

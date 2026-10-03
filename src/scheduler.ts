@@ -1,6 +1,11 @@
 import { Cron } from "croner";
 import type { Config } from "./config.ts";
-import { nextOccurrence, type RecordData } from "./validation.ts";
+import {
+  InputError,
+  nextOccurrence,
+  type RecordData,
+  uuid,
+} from "./validation.ts";
 
 export function startScheduler(config: Config): Cron | null {
   if (!config.serviceKey) return null;
@@ -36,10 +41,31 @@ export function startScheduler(config: Config): Cron | null {
           },
         );
         if (!delivered.ok) throw new Error("Delivery failed");
-      } catch {
-        console.error(
-          "A reminder could not be delivered; will retry on next tick",
-        );
+      } catch (error) {
+        if (error instanceof InputError) {
+          // Quarantine broken records so they cannot starve the global due queue.
+          const disabled = await fetch(
+            `${config.supabaseUrl}/rest/v1/reminders?id=eq.${
+              uuid(reminder.id)
+            }&next_run=eq.${encodeURIComponent(String(reminder.next_run))}`,
+            {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify({ active: false }),
+              signal: AbortSignal.timeout(15000),
+            },
+          );
+          if (!disabled.ok) {
+            throw new Error("Could not quarantine invalid reminder");
+          }
+          console.error(
+            "An invalid reminder was disabled; recreate it with a valid schedule",
+          );
+        } else {
+          console.error(
+            "A reminder could not be delivered; will retry on next tick",
+          );
+        }
       }
     }
   }

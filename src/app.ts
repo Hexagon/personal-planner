@@ -112,7 +112,7 @@ export function createHandler(config: Config) {
       console.error("Planner request failed");
       return json({
         error:
-          "Request failed. Please retry; no proposed action was confirmed.",
+          "Request failed. Refresh chat to check proposal status before retrying.",
       }, 502);
     }
   };

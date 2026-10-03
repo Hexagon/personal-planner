@@ -107,9 +107,10 @@ export async function chat(db: Database, config: Config, input: unknown) {
     JSON.parse(result.choices?.[0]?.message?.content ?? ""),
   );
   let reply = text(output.reply, 10000);
-  const proposal = output.proposal == null
-    ? null
-    : validateProposal(output.proposal);
+  const proposal = output.proposal == null ? null : {
+    ...validateProposal(output.proposal),
+    currency: String(profile.currency),
+  };
   if (proposal) {
     if (proposal.op === "add_reminder" && !config.serviceKey) {
       throw new InputError("Reminders are disabled");

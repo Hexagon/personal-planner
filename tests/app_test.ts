@@ -159,7 +159,8 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
         assistantSaved = true;
         assert(
           body.action_state === "pending" &&
-            body.proposal.data.user_id === undefined,
+            body.proposal.data.user_id === undefined &&
+            body.proposal.currency === "USD",
         );
       }
       return Promise.resolve(response([{ ...body, id: owner }]));
@@ -216,4 +217,49 @@ Deno.test("scheduler scopes delivery by persisted reminder ID and occurrence; no
     assert(Date.parse(String(call.p_next_run)) > Date.now());
   });
   assert(startScheduler(config) === null);
+});
+
+Deno.test("invalid schedules are quarantined without starving healthy reminders", async () => {
+  const invalidId = "22222222-2222-4222-8222-222222222222";
+  let disabled = false, delivered = false;
+  await mock((input, init) => {
+    const url = String(input);
+    if (url.includes("/reminders?") && !init?.method) {
+      return Promise.resolve(response([
+        {
+          id: invalidId,
+          cron: "invalid",
+          timezone: "UTC",
+          next_run: "2019-01-01T00:00:00Z",
+        },
+        {
+          id: owner,
+          cron: "0 9 * * *",
+          timezone: "UTC",
+          next_run: "2020-01-01T09:00:00Z",
+        },
+      ]));
+    }
+    if (init?.method === "PATCH") {
+      assert(
+        url.includes(`id=eq.${invalidId}`) && url.includes("next_run=eq."),
+      );
+      assert(JSON.parse(String(init.body)).active === false);
+      disabled = true;
+      return Promise.resolve(response(null));
+    }
+    assert(url.endsWith("/rpc/deliver_reminder"));
+    assert(JSON.parse(String(init?.body)).p_id === owner);
+    delivered = true;
+    return Promise.resolve(response(true));
+  }, async () => {
+    const job = startScheduler({
+      ...config,
+      serviceKey: "privileged-placeholder",
+    });
+    assert(job);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    job.stop();
+    assert(disabled && delivered);
+  });
 });
