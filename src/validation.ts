@@ -46,6 +46,24 @@ function optionalInteger(
 function notes(value: unknown): string {
   return value == null || value === "" ? "" : text(value, 4000);
 }
+export function taskKind(value: unknown): string {
+  if (value !== "task" && value !== "purchase") {
+    throw new InputError("Invalid task kind");
+  }
+  return value;
+}
+export function destinations(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 10) {
+    throw new InputError("Use at most 10 destinations");
+  }
+  const labels = value.map((label) => text(label, 200));
+  if (
+    new Set(labels.map((label) => label.toLowerCase())).size !== labels.length
+  ) {
+    throw new InputError("Destinations must be unique");
+  }
+  return labels;
+}
 export function timezone(value: unknown): string {
   const zone = text(value, 100);
   try {
@@ -157,6 +175,40 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
         clean.deadline = deadline(data.deadline);
       }
       if (op === "add_task" || data.status !== undefined) clean.status = status;
+      if (op === "add_task" || data.kind !== undefined) {
+        clean.kind = taskKind(data.kind === undefined ? "task" : data.kind);
+      }
+      if (op === "add_task" || data.category !== undefined) {
+        clean.category = data.category == null
+          ? null
+          : text(data.category, 100);
+      }
+      if (op === "add_task" || data.destinations !== undefined) {
+        clean.destinations = destinations(
+          data.destinations === undefined ? [] : data.destinations,
+        );
+      }
+      if (op === "add_task" || data.next_trip !== undefined) {
+        if (
+          data.next_trip !== undefined && typeof data.next_trip !== "boolean"
+        ) {
+          throw new InputError("Next trip must be a boolean");
+        }
+        clean.next_trip = data.next_trip ?? false;
+      }
+      break;
+    }
+    case "complete_tasks": {
+      if (
+        !Array.isArray(data.ids) || data.ids.length < 1 || data.ids.length > 20
+      ) {
+        throw new InputError("Complete between 1 and 20 tasks");
+      }
+      const ids = data.ids.map(uuid);
+      if (new Set(ids.map((id) => id.toLowerCase())).size !== ids.length) {
+        throw new InputError("Task IDs must be unique");
+      }
+      clean = { ids };
       break;
     }
     case "delete_asset":

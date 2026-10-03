@@ -2,8 +2,12 @@ import type { RecordData } from "../validation.ts";
 export function distanceKm(a: RecordData, b: RecordData): number | null {
   if (
     ![a.latitude, a.longitude, b.latitude, b.longitude].every((n) =>
-      typeof n === "number"
-    )
+      typeof n === "number" && Number.isFinite(n)
+    ) ||
+    Math.abs(a.latitude as number) > 90 ||
+    Math.abs(b.latitude as number) > 90 ||
+    Math.abs(a.longitude as number) > 180 ||
+    Math.abs(b.longitude as number) > 180
   ) return null;
   const radians = (degrees: number) => degrees * Math.PI / 180;
   const lat1 = radians(a.latitude as number),

@@ -177,40 +177,52 @@ export type Database = {
       "tasks": {
         Row: {
           "base_priority": number;
+          "category": string | null;
           "created_at": string;
           "deadline": string | null;
           "description": string;
+          "destinations": NonNullable<Json>;
           "duration_minutes": number | null;
           "estimated_cost_minor": number | null;
           "id": string;
+          "kind": string;
           "location": Json | null;
           "metadata": NonNullable<Json>;
+          "next_trip": boolean;
           "status": string;
           "user_id": string;
         };
         Insert: {
           "base_priority"?: number;
+          "category"?: string | null;
           "created_at"?: string;
           "deadline"?: string | null;
           "description": string;
+          "destinations"?: NonNullable<Json>;
           "duration_minutes"?: number | null;
           "estimated_cost_minor"?: number | null;
           "id"?: string;
+          "kind"?: string;
           "location"?: Json | null;
           "metadata"?: NonNullable<Json>;
+          "next_trip"?: boolean;
           "status"?: string;
           "user_id": string;
         };
         Update: {
           "base_priority"?: number;
+          "category"?: string | null;
           "created_at"?: string;
           "deadline"?: string | null;
           "description"?: string;
+          "destinations"?: NonNullable<Json>;
           "duration_minutes"?: number | null;
           "estimated_cost_minor"?: number | null;
           "id"?: string;
+          "kind"?: string;
           "location"?: Json | null;
           "metadata"?: NonNullable<Json>;
+          "next_trip"?: boolean;
           "status"?: string;
           "user_id"?: string;
         };
@@ -285,6 +297,10 @@ export type Database = {
           isOneToOne: false;
           isSetofReturn: true;
         };
+      };
+      "valid_task_destinations": {
+        Args: { "p_destinations": Json };
+        Returns: boolean;
       };
     };
     Enums: {

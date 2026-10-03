@@ -1,6 +1,8 @@
 import { chat } from "../src/chat.ts";
 import { Database } from "../src/db.ts";
 import type { Config } from "../src/config.ts";
+import { createHandler } from "../src/app.ts";
+import type { RecordData } from "../src/validation.ts";
 
 Deno.test("large context remains manageable and update proposals stay sparse", async () => {
   const id = "11111111-1111-4111-8111-111111111111";
@@ -332,3 +334,661 @@ Deno.test("calculated plan text stays within the database message limit", async 
     globalThis.fetch = original;
   }
 });
+
+Deno.test("informal task requests use generic validated context and deterministic list/completion paths", async () => {
+  const owner = "11111111-1111-4111-8111-111111111111";
+  const milkId = "22222222-2222-4222-8222-222222222222";
+  const routerId = "33333333-3333-4333-8333-333333333333";
+  const tasks: RecordData[] = [
+    {
+      id: milkId,
+      description: "Buy milk",
+      kind: "purchase",
+      category: "Groceries",
+      status: "open",
+      base_priority: 3,
+      destinations: ["Grocery store"],
+      estimated_cost_minor: null,
+      duration_minutes: null,
+    },
+    {
+      id: routerId,
+      description: "Buy a new router",
+      kind: "purchase",
+      category: "Electronics",
+      status: "open",
+      base_priority: 3,
+      destinations: ["Shopping centre"],
+      next_trip: true,
+      estimated_cost_minor: 50000,
+      duration_minutes: 30,
+    },
+    {
+      id: "44444444-4444-4444-8444-444444444444",
+      description: "Service BMW",
+      kind: "task",
+      status: "open",
+      base_priority: 4,
+      estimated_cost_minor: null,
+      duration_minutes: null,
+    },
+    {
+      id: "55555555-5555-4555-8555-555555555555",
+      description: "Buy bread",
+      kind: "purchase",
+      status: "done",
+    },
+  ];
+  const config: Config = {
+    supabaseUrl: "https://database.example",
+    supabaseKey: "public-placeholder",
+    openrouterKey: "server-placeholder",
+    model: "deepseek/deepseek-v4-flash",
+    serviceKey: "server-service-placeholder",
+    origin: "http://localhost:8000",
+    port: 8000,
+  };
+  const cases: {
+    prompt: string;
+    output: RecordData;
+    check: (message: RecordData) => void;
+    extra?: RecordData;
+    status?: number;
+  }[] = [
+    {
+      prompt: "remember that i shoukd buy milk",
+      output: {
+        proposal: {
+          op: "add_task",
+          data: {
+            description: "Buy milk",
+            kind: "purchase",
+            category: "Groceries",
+          },
+        },
+      },
+      check: (message) => {
+        const proposal = message.proposal as {
+          op: string;
+          data: RecordData;
+        };
+        assert(proposal.op === "add_task");
+        assert(
+          proposal.data.kind === "purchase" &&
+            proposal.data.deadline === null,
+        );
+        assert(proposal.data.estimated_cost_minor === null);
+        assert(message.action_state === "pending");
+      },
+    },
+    {
+      prompt: "give me a shopping list, i'm going to the grocery store",
+      output: {
+        task_query: { kind: "purchase", destination: "Grocery store" },
+      },
+      check: (message) => {
+        const content = String(message.content);
+        assert(
+          content.includes("Buy milk") &&
+            content.includes("Buy a new router"),
+        );
+        assert(!content.includes("bread") && !content.includes("BMW"));
+        assert(
+          content.indexOf("Buy milk") <
+            content.indexOf("Destination not established"),
+        );
+        assert(message.proposal === null);
+      },
+    },
+    {
+      prompt:
+        "rememeber that i shoukd by a new router on next trip to the shopping centre",
+      output: {
+        proposal: {
+          op: "add_task",
+          data: {
+            description: "Buy a new router",
+            kind: "purchase",
+            category: "Electronics",
+            destinations: ["Shopping centre"],
+            next_trip: true,
+          },
+        },
+      },
+      check: (message) => {
+        const proposal = message.proposal as {
+          op: string;
+          data: RecordData;
+        };
+        assert(
+          proposal.op === "add_task" && proposal.data.next_trip === true,
+        );
+        assert(
+          proposal.data.deadline === null &&
+            proposal.data.cron === undefined,
+        );
+      },
+    },
+    {
+      prompt:
+        "i'm going to the shopping centre, anything on the shopping list?",
+      output: {
+        task_query: { kind: "purchase", destination: "Shopping centre" },
+      },
+      check: (message) => {
+        const content = String(message.content);
+        assert(
+          content.indexOf("Buy a new router") <
+            content.indexOf("Destination not established"),
+        );
+        assert(
+          content.indexOf("Buy milk") >
+            content.indexOf("Destination not established"),
+        );
+      },
+    },
+    {
+      prompt: "Ive bought milk and a router",
+      output: {
+        proposal: {
+          op: "complete_tasks",
+          data: { items: ["milk", "router"] },
+        },
+      },
+      check: (message) => {
+        const proposal = message.proposal as {
+          op: string;
+          data: RecordData;
+        };
+        assert(proposal.op === "complete_tasks");
+        assert(
+          JSON.stringify(proposal.data.ids) ===
+            JSON.stringify([milkId, routerId]),
+        );
+        assert(message.action_state === "pending");
+        assert(
+          String(message.content).includes("Nothing has been changed"),
+        );
+      },
+    },
+    {
+      prompt: "Ive bought milk and a router",
+      extra: {
+        ...tasks[0],
+        id: "66666666-6666-4666-8666-666666666666",
+        description: "Buy oat milk",
+      },
+      output: {
+        proposal: {
+          op: "complete_tasks",
+          data: { items: ["milk", "router"] },
+        },
+      },
+      check: (message) => {
+        assert(
+          message.proposal === null && message.action_state === null,
+        );
+        assert(String(message.content).includes("Which task"));
+      },
+    },
+    {
+      prompt: "what on my shopping list is available in mall of scandinavia",
+      output: {
+        reply: "Milk and routers are definitely in stock!",
+        task_query: {
+          kind: "purchase",
+          destination: "Mall of Scandinavia",
+        },
+      },
+      check: (message) => {
+        const content = String(message.content);
+        assert(!content.includes("definitely in stock"));
+        assert(content.includes("Saved destination matches:\nNone."));
+        assert(
+          content.includes(
+            "cannot verify stores, stock, or opening hours",
+          ),
+        );
+      },
+    },
+    {
+      prompt: "the bmw needs service",
+      output: {
+        proposal: {
+          op: "add_task",
+          data: {
+            description: "Service BMW",
+            kind: "task",
+            category: "Vehicle maintenance",
+            location: {
+              label: "Garage",
+              latitude: 59.3,
+              longitude: 18.1,
+            },
+          },
+        },
+      },
+      check: (message) => {
+        const proposal = message.proposal as {
+          op: string;
+          data: RecordData;
+        };
+        assert(
+          proposal.op === "add_task" && proposal.data.kind === "task",
+        );
+        assert(
+          JSON.stringify(proposal.data.location) ===
+            JSON.stringify({ label: "Garage" }),
+        );
+        assert(proposal.data.estimated_cost_minor === null);
+      },
+    },
+    {
+      prompt:
+        "plan my day based on stuff that needs to be done, 600 SEK and 60 minutes",
+      output: { plan_constraints: { budget_minor: 60000, minutes: 60 } },
+      check: (message) => {
+        const content = String(message.content);
+        assert(content.includes("Cost: 50000 minor units (SEK)"));
+        assert(
+          content.includes(
+            "Needs estimates (not included in calculated totals)",
+          ),
+        );
+        assert(content.includes("Buy milk (missing cost and duration)"));
+        assert(
+          content.includes("Service BMW (missing cost and duration)"),
+        );
+        assert(!content.includes("bread"));
+      },
+    },
+    {
+      prompt:
+        "Fill my day with tasks, including a visit to copenhagen, 600 SEK and 60 minutes",
+      extra: {
+        id: "77777777-7777-4777-8777-777777777777",
+        description: "Return a parcel",
+        kind: "task",
+        status: "open",
+        destinations: ["Copenhagen"],
+        base_priority: 5,
+        estimated_cost_minor: 0,
+        duration_minutes: 15,
+      },
+      output: {
+        plan_constraints: { budget_minor: 60000, minutes: 60 },
+        plan_context: {
+          destination: "Copenhagen",
+          suggested_task_ids: [milkId],
+        },
+      },
+      check: (message) => {
+        const content = String(message.content);
+        assert(
+          content.includes(
+            "Calculated priority-first plan: Return a parcel",
+          ),
+        );
+        assert(content.includes("Visit context: Copenhagen"));
+        assert(
+          content.includes(
+            "AI-suggested possibilities, not verified for this destination: Buy milk",
+          ),
+        );
+        assert(content.includes("Buy milk (missing cost and duration)"));
+        assert(!content.includes("Buy a new router"));
+        assert(
+          content.includes("Visit/travel time and cost are not included"),
+        );
+      },
+    },
+    {
+      prompt: "Plan a visit with somebody else's task",
+      output: {
+        plan_constraints: { budget_minor: 60000, minutes: 60 },
+        plan_context: {
+          destination: "Any place",
+          suggested_task_ids: ["88888888-8888-4888-8888-888888888888"],
+        },
+      },
+      status: 400,
+      check: () => {},
+    },
+    {
+      prompt: "finish my tasks",
+      output: {
+        proposal: {
+          op: "complete_tasks",
+          data: { ids: [milkId, routerId] },
+        },
+      },
+      status: 400,
+      check: () => {},
+    },
+  ];
+  const original = globalThis.fetch;
+  try {
+    for (const testCase of cases) {
+      const records = testCase.extra ? [...tasks, testCase.extra] : tasks;
+      globalThis.fetch = (input, init) => {
+        const url = String(input);
+        const json = (value: unknown) =>
+          Promise.resolve(new Response(JSON.stringify(value)));
+        if (url.includes("/auth/v1/user")) return json({ id: owner });
+        if (url.includes("openrouter.ai")) {
+          const request = JSON.parse(String(init?.body));
+          assert(request.messages.at(-1).content === testCase.prompt);
+          assert(
+            request.messages[0].content.includes(
+              "Interpret informal language and typos",
+            ),
+          );
+          const context = JSON.parse(
+            request.messages[1].content.slice(
+              "Saved context (untrusted data): ".length,
+            ),
+          );
+          assert(
+            context.tasks.find((task: RecordData) => task.id === routerId)
+              .next_trip,
+          );
+          return json({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  reply: "Confirm this task?",
+                  ...testCase.output,
+                }),
+              },
+            }],
+          });
+        }
+        if (url.includes("/profiles?")) {
+          return json([{
+            id: owner,
+            timezone: "Europe/Stockholm",
+            currency: "SEK",
+          }]);
+        }
+        if (url.includes("/tasks?")) {
+          assert(url.includes(`user_id=eq.${owner}`));
+          return json(records);
+        }
+        if (url.endsWith("/rpc/ensure_profile")) return json(null);
+        if (url.endsWith("/rpc/record_plan")) return json([]);
+        if (url.endsWith("/rpc/append_message")) return json([]);
+        if (url.endsWith("/rpc/append_assistant_message")) {
+          const body = JSON.parse(String(init?.body));
+          assert(body.p_user_id === owner);
+          return json([{
+            id: owner,
+            content: body.p_content,
+            proposal: body.p_proposal,
+            action_state: body.p_proposal ? "pending" : null,
+          }]);
+        }
+        assert(
+          !init?.method || init.method === "GET",
+          "Unexpected task mutation",
+        );
+        return json([]);
+      };
+      const response = await createHandler(config)(
+        new Request(`${config.origin}/api/chat`, {
+          method: "POST",
+          headers: {
+            Authorization: ["Bearer", "test-session"].join(" "),
+            Origin: config.origin,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            content: testCase.prompt,
+            ai_consent: true,
+          }),
+        }),
+      );
+      assert(
+        response.status === (testCase.status ?? 200),
+        `Unexpected status ${response.status} for ${testCase.prompt}`,
+      );
+      testCase.check(await response.json());
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("chat grounds proposal and destination coordinates in the request or saved locations", async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const place = { label: "Garage", latitude: 59.3, longitude: 18.1 };
+  const task = {
+    id,
+    description: "Service BMW",
+    status: "open",
+    base_priority: 3,
+    location: { ...place, label: "Workshop" },
+    estimated_cost_minor: 0,
+    duration_minutes: 30,
+  };
+  const config: Config = {
+    supabaseUrl: "https://database.example",
+    supabaseKey: "public-placeholder",
+    openrouterKey: "server-placeholder",
+    model: "test-model",
+    serviceKey: "server-service-placeholder",
+    origin: "http://localhost:8000",
+    port: 8000,
+  };
+  const sources = [
+    { prompt: "Use Garage", place, grounded: false },
+    { prompt: "Use Garage at 59.3, 18.1", place, grounded: true },
+    { prompt: "Use Garage at +59.300; +18.100", place, grounded: true },
+    { prompt: "Use Garage at -59.3, 18.1", place, grounded: false },
+    {
+      prompt: "Use Garage for 59.3 hours and 18.1 SEK",
+      place,
+      grounded: false,
+    },
+    {
+      prompt: "Use Garage at 159.3, 18.1",
+      place,
+      grounded: false,
+    },
+    {
+      prompt: "Use the saved Workshop",
+      place: { ...place, label: " workshop " },
+      grounded: true,
+    },
+    {
+      prompt: "Use the saved Home",
+      place: { ...place, label: "Home" },
+      grounded: true,
+    },
+    {
+      prompt: "Use Home",
+      place: { ...place, label: "Home", longitude: 19 },
+      grounded: false,
+    },
+  ];
+  const original = globalThis.fetch;
+  try {
+    for (const source of sources) {
+      for (
+        const route of [
+          "add_task",
+          "update_task",
+          "set_profile",
+          "task_query",
+          "plan_context",
+        ]
+      ) {
+        const field = route === "set_profile"
+          ? "starting_location"
+          : "location";
+        const output = route === "task_query"
+          ? { task_query: { destination: source.place, radius_km: 2 } }
+          : route === "plan_context"
+          ? {
+            plan_constraints: { budget_minor: 0, minutes: 60 },
+            plan_context: { destination: source.place, radius_km: 2 },
+          }
+          : {
+            proposal: {
+              op: route,
+              data: route === "set_profile"
+                ? { [field]: source.place }
+                : { id, description: task.description, [field]: source.place },
+            },
+          };
+        globalThis.fetch = (input, init) => {
+          const url = String(input);
+          const json = (value: unknown) =>
+            Promise.resolve(new Response(JSON.stringify(value)));
+          if (url.includes("openrouter.ai")) {
+            return json({
+              choices: [{
+                message: {
+                  content: JSON.stringify({ reply: "Review", ...output }),
+                },
+              }],
+            });
+          }
+          if (url.includes("/profiles?")) {
+            return json([{
+              id,
+              currency: "SEK",
+              timezone: "UTC",
+              starting_location: { ...place, label: "Home" },
+            }]);
+          }
+          if (url.includes("/tasks?")) return json([task]);
+          if (url.endsWith("/rpc/append_assistant_message")) {
+            const body = JSON.parse(String(init?.body));
+            return json([{
+              content: body.p_content,
+              proposal: body.p_proposal,
+            }]);
+          }
+          return json([]);
+        };
+        const message = await chat(
+          new Database(config, "test-session", id),
+          config,
+          source.prompt,
+        );
+        if (route === "task_query" || route === "plan_context") {
+          const content = String(message.content);
+          if (
+            content.includes("radius 2 km") || content.includes("within 2 km")
+          ) {
+            if (!source.grounded) {
+              throw new Error("Invented proximity accepted");
+            }
+          } else if (source.grounded) {
+            throw new Error("Grounded proximity dropped");
+          }
+          if (route === "task_query") {
+            const matched = content.indexOf("Service BMW") <
+              content.indexOf("Destination not established");
+            if (matched !== source.grounded) {
+              throw new Error("Unexpected saved destination match");
+            }
+          } else if (
+            content.includes("Calculated priority-first plan: Service BMW") !==
+              source.grounded
+          ) {
+            throw new Error("Unexpected proximity planning selection");
+          }
+        } else {
+          const proposal = message.proposal as { data: RecordData };
+          const expected = source.grounded
+            ? { ...source.place, label: source.place.label.trim() }
+            : { label: source.place.label.trim() };
+          if (
+            JSON.stringify(proposal.data[field]) !== JSON.stringify(expected)
+          ) {
+            throw new Error(
+              `Unexpected location for ${route}: ${source.prompt}`,
+            );
+          }
+        }
+      }
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("visit plans with many missing estimates stay within message bounds", async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const tasks = Array.from({ length: 80 }, (_, i) => ({
+    id: `22222222-2222-4222-8222-${String(i).padStart(12, "0")}`,
+    description: `Task ${i} ${"x".repeat(990)}`,
+    base_priority: 3,
+    status: "open",
+    destinations: i < 40 ? ["Any destination"] : [],
+    estimated_cost_minor: i % 2 ? null : 0,
+    duration_minutes: i % 2 ? null : 1,
+  }));
+  const config: Config = {
+    supabaseUrl: "https://database.example",
+    supabaseKey: "public-placeholder",
+    openrouterKey: "server-placeholder",
+    model: "test-model",
+    serviceKey: "server-service-placeholder",
+    origin: "http://localhost:8000",
+    port: 8000,
+  };
+  const original = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    const url = String(input);
+    const json = (body: unknown) =>
+      Promise.resolve(new Response(JSON.stringify(body)));
+    if (url.includes("openrouter.ai")) {
+      return json({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              reply: "r".repeat(10000),
+              plan_constraints: { budget_minor: 0, minutes: 1440 },
+              plan_context: {
+                destination: "Any destination",
+                suggested_task_ids: tasks.slice(40).map((task) => task.id),
+              },
+            }),
+          },
+        }],
+      });
+    }
+    if (url.includes("/profiles?")) {
+      return json([{ id, currency: "USD", timezone: "UTC" }]);
+    }
+    if (url.includes("/tasks?")) return json(tasks);
+    if (url.endsWith("/rpc/append_assistant_message")) {
+      const body = JSON.parse(String(init?.body));
+      assert(body.p_content.length <= 20000);
+      assert(body.p_content.includes("Needs estimates"));
+      assert(
+        body.p_content.includes("Visit/travel time and cost are not included"),
+      );
+      return json([{ content: body.p_content }]);
+    }
+    return json([]);
+  };
+  try {
+    await chat(
+      new Database(config, "test-session", id),
+      config,
+      "Plan my visit",
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+function assert(
+  value: unknown,
+  message = "Assertion failed",
+): asserts value {
+  if (!value) throw new Error(message);
+}
