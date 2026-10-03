@@ -2,7 +2,10 @@
   "tasks": {
     "start": "deno run --env-file=.env --allow-env --allow-net --allow-read=public src/main.ts",
     "dev": "deno run --env-file=.env --allow-env --allow-net --allow-read=public --watch=src,public src/main.ts",
-    "check": "deno fmt --check && deno lint && deno check src/main.ts public/app.js && deno check --unstable-cron src/deploy.ts && deno test"
+    "fmt": "deno fmt --check",
+    "lint": "deno lint",
+    "test": "deno test",
+    "check": "deno task fmt && deno task lint && deno check src/main.ts public/app.js && deno check --unstable-cron src/deploy.ts && deno task test"
   },
   "imports": {
     "croner": "npm:croner@10.0.1"

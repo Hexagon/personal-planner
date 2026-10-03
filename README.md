@@ -48,6 +48,13 @@ The browser receives only the Supabase URL and public key. Auth tokens are held
 in memory, not local storage; reloading requires login. `.env` is ignored by
 Git.
 
+## Checks
+
+Run `deno task fmt`, `deno task lint`, or `deno task test` to check formatting,
+lint rules, or tests individually. `deno task check` runs all three along with
+type checks for both server entrypoints and the browser app. GitHub Actions runs
+this full check on pushes and pull requests.
+
 ### Deno Deploy
 
 Create a Deno Deploy project from this repository and set `src/deploy.ts` as its
