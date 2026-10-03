@@ -24,8 +24,10 @@ family's context; there is no cross-account household sharing.
    - `SUPABASE_PUBLISHABLE_KEY`: public publishable key or legacy anon key.
      **Never put a secret/service-role key here.**
    - `OPENROUTER_API_KEY`: server-only API key.
-   - `OPENROUTER_MODEL`: a model supporting JSON-object responses. The default
-     is `openai/gpt-4.1-mini`; availability and pricing depend on your provider.
+   - `OPENROUTER_MODEL`: the default model, either `deepseek/deepseek-v4-flash`
+     or `deepseek/deepseek-v4-pro` (default: Flash). The chat interface lets
+     users choose between these models; availability and pricing depend on
+     OpenRouter.
    - `SUPABASE_SERVICE_ROLE_KEY`: required server-only legacy service-role key.
      It is used only by the Deno server for trusted assistant messages and
      unattended reminders; never expose it to the browser.
@@ -134,6 +136,9 @@ time. If it has changed, cancel the old proposal and request a new one.
 - Before sending chat, users must accept a notice that chat and selected saved
   task, location, and financial data go through OpenRouter and its model
   provider. Treat AI replies as suggestions; do not include secrets in chat.
+- Choose DeepSeek V4 Flash or Pro in chat. The model must return the app's JSON
+  reply/proposal format; available actions are proposals, not callable tools,
+  and are never saved without inline confirmation.
 
 ## Reminders
 

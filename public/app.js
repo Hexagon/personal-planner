@@ -1,5 +1,12 @@
 const config = await fetch("/api/config").then((response) => response.json());
 const element = (id) => document.getElementById(id);
+for (const model of config.models) {
+  const option = document.createElement("option");
+  option.value = model.id;
+  option.textContent = model.name;
+  element("model").append(option);
+}
+element("model").value = config.model;
 let session = null;
 let busy = false;
 const renderedMessages = new Map();
@@ -196,6 +203,7 @@ element("chat-form").onsubmit = (event) => {
     }
     await api("/api/chat", {
       content: element("prompt").value,
+      model: element("model").value,
       ai_consent: true,
     });
     element("prompt").value = "";

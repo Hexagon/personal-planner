@@ -1,4 +1,4 @@
-import type { Config } from "./config.ts";
+import { availableModels, type Config, isAvailableModel } from "./config.ts";
 import { authenticate, AuthError } from "./db.ts";
 import { chat } from "./chat.ts";
 import { InputError, object } from "./validation.ts";
@@ -41,6 +41,8 @@ export function createHandler(config: Config) {
           supabaseUrl: config.supabaseUrl,
           supabaseKey: config.supabaseKey,
           schedulerEnabled: true,
+          model: config.model,
+          models: availableModels,
         });
       }
       if (!["/api/messages", "/api/chat", "/api/confirm"].includes(path)) {
@@ -93,7 +95,11 @@ export function createHandler(config: Config) {
               "Consent to OpenRouter processing is required",
             );
           }
-          return json(await chat(db, config, body.content));
+          const model = body.model ?? config.model;
+          if (!isAvailableModel(model)) {
+            throw new InputError("Choose a supported model");
+          }
+          return json(await chat(db, config, body.content, model));
         }
         if (typeof body.cancel !== "boolean") {
           throw new InputError("Confirmation choice required");
