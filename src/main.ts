@@ -3,7 +3,8 @@ import { loadConfig } from "./config.ts";
 import { startScheduler } from "./scheduler.ts";
 
 const config = loadConfig();
-const kv = await Deno.openKv("./planner.sqlite3");
+await Deno.mkdir("./data", { recursive: true });
+const kv = await Deno.openKv("./data/planner.sqlite3");
 const scheduler = startScheduler(kv);
 const server = Deno.serve(
   { port: config.port },

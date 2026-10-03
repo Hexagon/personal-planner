@@ -495,7 +495,9 @@ Deno.test("invalid reminder schedules are quarantined without blocking due remin
   await withKv(async (kv) => {
     const invalidId = id(600);
     const validId = id(601);
+    const staleId = id(602);
     const due = "2020-01-01T09:00:00.000Z";
+    await kv.set(["planner", "due", due, owner, staleId], staleId);
     for (
       const [reminderId, cron] of [[invalidId, "invalid"], [
         validId,
@@ -531,5 +533,8 @@ Deno.test("invalid reminder schedules are quarantined without blocking due remin
     assert(invalid.value?.active === false);
     assert(Date.parse(String(valid.value?.next_run)) > Date.now());
     assert((await new Database(kv, owner).list("messages")).length === 1);
+    assert(
+      (await kv.get(["planner", "due", due, owner, staleId])).value === null,
+    );
   });
 });

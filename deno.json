@@ -1,7 +1,7 @@
 {
   "tasks": {
-    "start": "deno run --unstable-kv --env-file=.env --allow-env --allow-net --allow-read=public,planner.sqlite3 --allow-write=planner.sqlite3 src/main.ts",
-    "dev": "deno run --unstable-kv --env-file=.env --allow-env --allow-net --allow-read=public,planner.sqlite3 --allow-write=planner.sqlite3 --watch=src,public src/main.ts",
+    "start": "deno run --unstable-kv --env-file=.env --allow-env --allow-net --allow-read=public,data --allow-write=data src/main.ts",
+    "dev": "deno run --unstable-kv --env-file=.env --allow-env --allow-net --allow-read=public,data --allow-write=data --watch=src,public src/main.ts",
     "fmt": "deno fmt --check",
     "lint": "deno lint",
     "test": "deno test --unstable-kv",

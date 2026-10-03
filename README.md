@@ -45,7 +45,7 @@ family's context; there is no cross-account household sharing.
    continuously running process for Croner reminders; for Deno Deploy, follow
    the deployment instructions below.
 
-The local Deno KV database is stored in `planner.sqlite3`; it is created
+The local Deno KV database is stored in `data/planner.sqlite3`; it is created
 automatically and ignored by Git. Each OAuth provider identity has its own
 planner data; Google and GitHub sign-ins are not automatically linked. Auth.js
 keeps its signed, encrypted session in an HttpOnly cookie. OAuth credentials,
@@ -224,8 +224,8 @@ not a live model's accuracy at understanding every phrase or typo.
 - `src/scheduler.ts`: bounded polling and transactional reminder delivery;
   `src/deploy.ts` registers the Deno Deploy cron trigger.
 - `public/`: dependency-free login/chat UI.
-- `planner.sqlite3`: local Deno KV database (created automatically; ignored by
-  Git).
+- `data/planner.sqlite3`: local Deno KV database (created automatically; ignored
+  by Git).
 
 No agent framework, autonomous loops, frontend build step, or database service
 is required. OAuth and the AI provider remain external services. The per-account

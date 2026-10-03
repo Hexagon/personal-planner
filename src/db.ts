@@ -97,18 +97,24 @@ export class Database {
       : table === "messages"
       ? await (async () => {
         const result: RecordData[] = [];
+        const ids: string[] = [];
         for await (
           const index of this.kv.list<string>({
             prefix: ["planner", "message_dates", this.userId],
           }, { reverse: true, limit: 100 })
         ) {
           const id = index.key[4];
-          if (typeof id !== "string") continue;
-          const message = await this.kv.get<RecordData>(
-            key("messages", this.userId, id),
-          );
-          if (message.value) result.push(message.value);
-          if (result.length === 100) break;
+          if (typeof id === "string") ids.push(id);
+        }
+        for (let offset = 0; offset < ids.length; offset += 10) {
+          const page = await this.kv.getMany(
+            ids.slice(offset, offset + 10).map((id) =>
+              key("messages", this.userId, id)
+            ),
+          ) as Deno.KvEntryMaybe<RecordData>[];
+          for (const message of page) {
+            if (message.value) result.push(message.value);
+          }
         }
         return result;
       })()
@@ -437,16 +443,17 @@ export async function dueReminders(
 ): Promise<DueReminder[]> {
   const result: DueReminder[] = [];
   const end = ["planner", "due", `${before}\uffff`] as const;
-  let scanned = 0;
   for await (
     const index of kv.list<string>({
       start: ["planner", "due"],
       end,
     }, { limit })
   ) {
-    if (scanned++ >= limit) break;
     const [, , , userId, id] = index.key as Deno.KvKey;
-    if (typeof userId !== "string" || typeof id !== "string") continue;
+    if (typeof userId !== "string" || typeof id !== "string") {
+      await kv.atomic().delete(index.key).commit();
+      continue;
+    }
     const entry = await kv.get<RecordData>(key("reminders", userId, id));
     if (
       entry.value?.active === true &&
@@ -458,6 +465,8 @@ export async function dueReminders(
         row: entry.value,
         versionstamp: entry.versionstamp!,
       });
+    } else {
+      await kv.atomic().delete(index.key).commit();
     }
   }
   return result;
