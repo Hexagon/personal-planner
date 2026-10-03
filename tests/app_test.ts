@@ -227,6 +227,11 @@ Deno.test("scheduler scopes delivery by persisted reminder ID and occurrence; no
   await mock((input, init) => {
     const url = String(input);
     if (url.includes("/reminders?")) {
+      assert(url.includes("limit=50"), "Reminder polling must stay bounded");
+      assert(
+        new Headers(init?.headers).get("apikey") === "privileged-placeholder",
+        "Reminder polling must use the server-only key",
+      );
       return Promise.resolve(response([{
         id: owner,
         user_id: owner,
@@ -249,7 +254,7 @@ Deno.test("scheduler scopes delivery by persisted reminder ID and occurrence; no
     assert(
       call.p_id === owner && call.p_expected_run === "2020-01-01T09:00:00Z",
     );
-    assert(Date.parse(String(call.p_next_run)) > Date.now()    );
+    assert(Date.parse(String(call.p_next_run)) > Date.now());
   });
 });
 

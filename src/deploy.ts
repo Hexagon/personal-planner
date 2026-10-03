@@ -7,4 +7,4 @@ const config = loadConfig();
 Deno.cron("deliver-due-reminders", "* * * * *", () =>
   runSchedulerTick(config)
 );
-Deno.serve({ port: config.port }, createHandler(config));
+Deno.serve(createHandler(config));
