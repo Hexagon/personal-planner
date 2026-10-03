@@ -24,10 +24,10 @@ family's context; there is no cross-account household sharing.
    - `SUPABASE_PUBLISHABLE_KEY`: public publishable key or legacy anon key.
      **Never put a secret/service-role key here.**
    - `OPENROUTER_API_KEY`: server-only API key.
-   - `OPENROUTER_MODEL`: the default model, either
-     `deepseek/deepseek-v4-flash` or `deepseek/deepseek-v4-pro` (default:
-     Flash). The chat interface lets users choose between these models;
-     availability and pricing depend on OpenRouter.
+   - `OPENROUTER_MODEL`: the default model, either `deepseek/deepseek-v4-flash`
+     or `deepseek/deepseek-v4-pro` (default: Flash). The chat interface lets
+     users choose between these models; availability and pricing depend on
+     OpenRouter.
    - `SUPABASE_SERVICE_ROLE_KEY`: required server-only legacy service-role key.
      It is used only by the Deno server for trusted assistant messages and
      unattended reminders; never expose it to the browser.

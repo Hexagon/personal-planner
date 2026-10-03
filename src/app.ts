@@ -1,4 +1,4 @@
-import { availableModels, isAvailableModel, type Config } from "./config.ts";
+import { availableModels, type Config, isAvailableModel } from "./config.ts";
 import { authenticate, AuthError } from "./db.ts";
 import { chat } from "./chat.ts";
 import { InputError, object } from "./validation.ts";
