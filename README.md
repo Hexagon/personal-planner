@@ -26,8 +26,9 @@ family's context; there is no cross-account household sharing.
    - `OPENROUTER_API_KEY`: server-only API key.
    - `OPENROUTER_MODEL`: a model supporting JSON-object responses. The default
      is `openai/gpt-4.1-mini`; availability and pricing depend on your provider.
-   - `SUPABASE_SERVICE_ROLE_KEY`: optional, server-only legacy service-role key.
-     Without it, unattended reminders are disabled.
+   - `SUPABASE_SERVICE_ROLE_KEY`: required server-only legacy service-role key.
+     It is used only by the Deno server for trusted assistant messages and
+     unattended reminders; never expose it to the browser.
    - `APP_ORIGIN`: exact browser origin, default `http://localhost:8000`. Set
      this to your HTTPS origin when deployed.
    - `PORT`: default `8000`.
@@ -95,9 +96,11 @@ time. If it has changed, cancel the old proposal and request a new one.
   advice. The app cannot purchase anything or perform financial transactions.
 - The model can suggest and explain, but cannot execute arbitrary tools or SQL.
   Application validators allow only known fields/actions. Authenticated users
-  have read-only table access; owner-validated RPCs provide the narrow write
-  paths, and confirmation/cancellation can only transition pending proposals.
-  Database constraints and ownership policies provide another boundary.
+  have read-only table access and can append only their own user messages.
+  Confirmation/cancellation use owner-validated RPCs; trusted assistant messages
+  are written server-side with the privileged key. Confirmation can only
+  transition pending proposals. Database constraints and ownership policies
+  provide another boundary.
 - Before sending chat, users must accept a notice that chat and selected saved
   task, location, and financial data go through OpenRouter and its model
   provider. Treat AI replies as suggestions; do not include secrets in chat.
@@ -118,8 +121,9 @@ cannot block other users' reminders; remove and recreate them with valid
 schedules. Transient delivery failures are retried on the next tick. Reminders
 appear in chat (refreshed every 30 seconds while visible), not email/push
 notifications. Scheduled planning is a prompt to open chat and plan; it never
-invokes AI or changes tasks or budgets unattended. Running without the
-privileged key is supported.
+invokes AI or changes tasks or budgets unattended. The server-side privileged
+key is required for assistant replies and reminder delivery; it is never sent to
+the browser.
 
 ## Development and checks
 

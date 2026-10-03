@@ -130,22 +130,41 @@ begin
   if v_user_id is null then
    raise exception 'Authentication required' using errcode = '42501';
   end if;
-  if p_role is null or p_role not in ('user', 'assistant')
+  if p_role is distinct from 'user'
    or p_content is null or length(p_content) not between 1 and 20000
-   or (p_proposal is not null and p_proposal <> 'null'::jsonb and (
-     p_role <> 'assistant' or jsonb_typeof(p_proposal) <> 'object'
-     or octet_length(p_proposal::text) > 65536
-   )) then
+   or (p_proposal is not null and p_proposal <> 'null'::jsonb) then
    raise exception 'Invalid message';
   end if;
   return query
    insert into public.messages(user_id, role, content, proposal, action_state)
-   values (v_user_id, p_role, p_content,
+   values (v_user_id, 'user', p_content, null, null)
+   returning *;
+end;
+$$;
+
+create function public.append_assistant_message(
+  p_user_id uuid, p_content text, p_proposal jsonb default null
+)
+returns setof public.messages
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_user_id is null or p_content is null
+   or length(p_content) not between 1 and 20000
+   or (p_proposal is not null and p_proposal <> 'null'::jsonb and (
+     jsonb_typeof(p_proposal) <> 'object'
+     or octet_length(p_proposal::text) > 65536
+   )) then
+   raise exception 'Invalid assistant message';
+  end if;
+  return query
+   insert into public.messages(user_id, role, content, proposal, action_state)
+   values (p_user_id, 'assistant', p_content,
      nullif(p_proposal, 'null'::jsonb),
-     case
-       when p_proposal is null or p_proposal = 'null'::jsonb then null
-       else 'pending'
-     end)
+     case when p_proposal is null or p_proposal = 'null'::jsonb
+       then null else 'pending' end)
    returning *;
 end;
 $$;
@@ -271,12 +290,16 @@ begin
     end if;
   end loop;
 
-  if v_op = any(array['add_asset', 'update_asset', 'add_task', 'update_task', 'add_reminder'])
+  if v_op = any(array['add_asset', 'add_task', 'add_reminder'])
      and not (v_data ? 'description') then
     raise exception 'Description required';
   end if;
-  if v_op = any(array['add_asset', 'update_asset']) and not (v_data ? 'value_minor') then
+  if v_op = 'add_asset' and not (v_data ? 'value_minor') then
     raise exception 'Asset value required';
+  end if;
+  if v_op = any(array['update_asset', 'update_task', 'set_profile'])
+     and (v_data - array['id']) = '{}'::jsonb then
+    raise exception 'Update must include a changed field';
   end if;
   if v_op = 'add_reminder' and not (v_data ?& array['cron', 'timezone', 'next_run']) then
     raise exception 'Reminder schedule required';
@@ -300,9 +323,9 @@ begin
         coalesce(v_data ->> 'notes', ''));
     when 'update_asset' then
       update public.assets set
-        description = v_data ->> 'description',
-        value_minor = (v_data ->> 'value_minor')::bigint,
-        notes = coalesce(v_data ->> 'notes', '')
+        description = case when v_data ? 'description' then v_data ->> 'description' else description end,
+        value_minor = case when v_data ? 'value_minor' then (v_data ->> 'value_minor')::bigint else value_minor end,
+        notes = case when v_data ? 'notes' then v_data ->> 'notes' else notes end
       where id = v_target_id and user_id = v_user_id;
     when 'delete_asset' then
       delete from public.assets where id = v_target_id and user_id = v_user_id;
@@ -315,20 +338,20 @@ begin
         (v_data ->> 'deadline')::date, coalesce(v_data ->> 'status', 'open'));
     when 'update_task' then
       update public.tasks set
-        description = v_data ->> 'description',
-        location = nullif(v_data -> 'location', 'null'::jsonb),
-        base_priority = coalesce((v_data ->> 'base_priority')::integer, 3),
-        estimated_cost_minor = (v_data ->> 'estimated_cost_minor')::bigint,
-        duration_minutes = (v_data ->> 'duration_minutes')::integer,
-        deadline = (v_data ->> 'deadline')::date,
-        status = coalesce(v_data ->> 'status', 'open')
+        description = case when v_data ? 'description' then v_data ->> 'description' else description end,
+        location = case when v_data ? 'location' then nullif(v_data -> 'location', 'null'::jsonb) else location end,
+        base_priority = case when v_data ? 'base_priority' then (v_data ->> 'base_priority')::integer else base_priority end,
+        estimated_cost_minor = case when v_data ? 'estimated_cost_minor' then (v_data ->> 'estimated_cost_minor')::bigint else estimated_cost_minor end,
+        duration_minutes = case when v_data ? 'duration_minutes' then (v_data ->> 'duration_minutes')::integer else duration_minutes end,
+        deadline = case when v_data ? 'deadline' then (v_data ->> 'deadline')::date else deadline end,
+        status = case when v_data ? 'status' then v_data ->> 'status' else status end
       where id = v_target_id and user_id = v_user_id;
     when 'delete_task' then
       delete from public.tasks where id = v_target_id and user_id = v_user_id;
     when 'set_profile' then
-      if exists (
+      if v_data ? 'currency' and exists (
         select 1 from public.profiles
-        where id = v_user_id and currency <> coalesce(v_data ->> 'currency', 'USD')
+        where id = v_user_id and currency <> (v_data ->> 'currency')
       ) and (
         exists (select 1 from public.assets where user_id = v_user_id)
         or exists (select 1 from public.tasks where user_id = v_user_id)
@@ -337,12 +360,15 @@ begin
       end if;
       insert into public.profiles(id, timezone, currency, starting_location, preferences, budget_minor)
       values (v_user_id, coalesce(v_data ->> 'timezone', 'UTC'),
-        coalesce(v_data ->> 'currency', 'USD'), nullif(v_data -> 'starting_location', 'null'::jsonb),
+        coalesce(v_data ->> 'currency', 'USD'),
+        nullif(v_data -> 'starting_location', 'null'::jsonb),
         coalesce(v_data ->> 'preferences', ''), (v_data ->> 'budget_minor')::bigint)
       on conflict (id) do update set
-        timezone = excluded.timezone, currency = excluded.currency,
-        starting_location = excluded.starting_location, preferences = excluded.preferences,
-        budget_minor = excluded.budget_minor;
+        timezone = case when v_data ? 'timezone' then excluded.timezone else public.profiles.timezone end,
+        currency = case when v_data ? 'currency' then excluded.currency else public.profiles.currency end,
+        starting_location = case when v_data ? 'starting_location' then excluded.starting_location else public.profiles.starting_location end,
+        preferences = case when v_data ? 'preferences' then excluded.preferences else public.profiles.preferences end,
+        budget_minor = case when v_data ? 'budget_minor' then excluded.budget_minor else public.profiles.budget_minor end;
     when 'add_reminder' then
       insert into public.reminders(user_id, description, cron, timezone, next_run)
       values (v_user_id, v_data ->> 'description', v_data ->> 'cron',
@@ -386,10 +412,14 @@ $$;
 revoke all on function public.ensure_profile() from public, anon, authenticated;
 revoke all on function public.append_message(text, text, jsonb)
   from public, anon, authenticated;
+revoke all on function public.append_assistant_message(uuid, text, jsonb)
+  from public, anon, authenticated, service_role;
 revoke all on function public.record_plan(jsonb) from public, anon, authenticated;
 revoke all on function public.cancel_action(uuid) from public, anon, authenticated;
 grant execute on function public.ensure_profile() to authenticated;
 grant execute on function public.append_message(text, text, jsonb) to authenticated;
+grant execute on function public.append_assistant_message(uuid, text, jsonb)
+  to service_role;
 grant execute on function public.record_plan(jsonb) to authenticated;
 grant execute on function public.confirm_action(uuid) to authenticated;
 grant execute on function public.cancel_action(uuid) to authenticated;

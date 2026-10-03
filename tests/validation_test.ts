@@ -77,6 +77,37 @@ Deno.test("task unknown costs and duration stay null, priority is bounded", () =
     })
   );
 });
+Deno.test("partial update proposals keep only changed fields", () => {
+  equal(
+    validateProposal({
+      op: "update_task",
+      data: {
+        id: "11111111-1111-4111-8111-111111111111",
+        base_priority: 5,
+      },
+    }),
+    {
+      op: "update_task",
+      data: {
+        base_priority: 5,
+        id: "11111111-1111-4111-8111-111111111111",
+      },
+    },
+  );
+  equal(
+    validateProposal({
+      op: "set_profile",
+      data: { preferences: "Quiet mornings" },
+    }),
+    { op: "set_profile", data: { preferences: "Quiet mornings" } },
+  );
+  rejects(() =>
+    validateProposal({
+      op: "update_task",
+      data: { id: "11111111-1111-4111-8111-111111111111" },
+    })
+  );
+});
 Deno.test("location validates coordinates and does not invent missing coordinates", () => {
   equal(location({ label: "Library" }), { label: "Library" });
   rejects(() => location({ label: "Library", latitude: 91, longitude: 0 }));

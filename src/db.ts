@@ -13,12 +13,15 @@ export class Database {
     path: string,
     method = "GET",
     body?: unknown,
+    serviceRole = false,
   ): Promise<unknown> {
+    const key = serviceRole ? this.config.serviceKey : this.config.supabaseKey;
+    const token = serviceRole ? key : this.token;
     const response = await fetch(`${this.config.supabaseUrl}/rest/v1/${path}`, {
       method,
       headers: {
-        apikey: this.config.supabaseKey,
-        Authorization: ["Bearer", this.token].join(" "),
+        apikey: key,
+        Authorization: ["Bearer", token].join(" "),
         "Content-Type": "application/json",
         Prefer: "return=representation",
       },
@@ -44,10 +47,25 @@ export class Database {
   }
   insert(table: "messages" | "planning_sessions", data: RecordData) {
     if (table === "messages") {
+      if (data.role === "assistant") {
+        return this.request(
+          "rpc/append_assistant_message",
+          "POST",
+          {
+            p_user_id: this.userId,
+            p_content: data.content,
+            p_proposal: data.proposal ?? null,
+          },
+          true,
+        ) as Promise<RecordData[]>;
+      }
+      if (data.role !== "user" || data.proposal != null) {
+        throw new InputError("Invalid message");
+      }
       return this.request("rpc/append_message", "POST", {
-        p_role: data.role,
+        p_role: "user",
         p_content: data.content,
-        p_proposal: data.proposal ?? null,
+        p_proposal: null,
       }) as Promise<RecordData[]>;
     }
     return this.request("rpc/record_plan", "POST", {

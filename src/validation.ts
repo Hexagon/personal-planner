@@ -110,32 +110,53 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
   let clean: RecordData;
   switch (op) {
     case "add_asset":
-    case "update_asset":
-      clean = {
-        description: text(data.description),
-        value_minor: integer(data.value_minor, 0, 1e12),
-        notes: notes(data.notes),
-      };
+    case "update_asset": {
+      clean = {};
+      if (op === "add_asset" || data.description !== undefined) {
+        clean.description = text(data.description);
+      }
+      if (op === "add_asset" || data.value_minor !== undefined) {
+        clean.value_minor = integer(data.value_minor, 0, 1e12);
+      }
+      if (op === "add_asset" || data.notes !== undefined) {
+        clean.notes = notes(data.notes);
+      }
       break;
+    }
     case "add_task":
     case "update_task": {
       const status = data.status ?? "open";
       if (!["open", "done", "cancelled"].includes(String(status))) {
         throw new InputError("Invalid status");
       }
-      clean = {
-        description: text(data.description),
-        location: location(data.location),
-        base_priority: integer(data.base_priority ?? 3, 1, 5),
-        estimated_cost_minor: optionalInteger(
+      clean = {};
+      if (op === "add_task" || data.description !== undefined) {
+        clean.description = text(data.description);
+      }
+      if (op === "add_task" || data.location !== undefined) {
+        clean.location = location(data.location);
+      }
+      if (op === "add_task" || data.base_priority !== undefined) {
+        clean.base_priority = integer(data.base_priority ?? 3, 1, 5);
+      }
+      if (op === "add_task" || data.estimated_cost_minor !== undefined) {
+        clean.estimated_cost_minor = optionalInteger(
           data.estimated_cost_minor,
           0,
           1e12,
-        ),
-        duration_minutes: optionalInteger(data.duration_minutes, 1, 1440),
-        deadline: deadline(data.deadline),
-        status,
-      };
+        );
+      }
+      if (op === "add_task" || data.duration_minutes !== undefined) {
+        clean.duration_minutes = optionalInteger(
+          data.duration_minutes,
+          1,
+          1440,
+        );
+      }
+      if (op === "add_task" || data.deadline !== undefined) {
+        clean.deadline = deadline(data.deadline);
+      }
+      if (op === "add_task" || data.status !== undefined) clean.status = status;
       break;
     }
     case "delete_asset":
@@ -144,17 +165,26 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
       clean = { id: uuid(data.id) };
       break;
     case "set_profile": {
-      const currency = text(data.currency, 3);
-      if (!/^[A-Z]{3}$/.test(currency)) {
-        throw new InputError("Use a three-letter currency code");
+      clean = {};
+      if (data.timezone !== undefined) {
+        clean.timezone = timezone(data.timezone);
       }
-      clean = {
-        timezone: timezone(data.timezone),
-        currency,
-        starting_location: location(data.starting_location),
-        preferences: notes(data.preferences),
-        budget_minor: optionalInteger(data.budget_minor, 0, 1e12),
-      };
+      if (data.currency !== undefined) {
+        const currency = text(data.currency, 3);
+        if (!/^[A-Z]{3}$/.test(currency)) {
+          throw new InputError("Use a three-letter currency code");
+        }
+        clean.currency = currency;
+      }
+      if (data.starting_location !== undefined) {
+        clean.starting_location = location(data.starting_location);
+      }
+      if (data.preferences !== undefined) {
+        clean.preferences = notes(data.preferences);
+      }
+      if (data.budget_minor !== undefined) {
+        clean.budget_minor = optionalInteger(data.budget_minor, 0, 1e12);
+      }
       break;
     }
     case "add_reminder":
@@ -167,6 +197,12 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
       break;
     default:
       throw new InputError("Unsupported action");
+  }
+  if (op.startsWith("update_") && Object.keys(clean).length === 0) {
+    throw new InputError("Update must include a changed field");
+  }
+  if (op === "set_profile" && Object.keys(clean).length === 0) {
+    throw new InputError("Profile update must include a changed field");
   }
   if (op.startsWith("update_")) clean.id = uuid(data.id);
   return { op, data: clean };

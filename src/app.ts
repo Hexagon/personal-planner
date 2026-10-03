@@ -40,7 +40,7 @@ export function createHandler(config: Config) {
         return json({
           supabaseUrl: config.supabaseUrl,
           supabaseKey: config.supabaseKey,
-          schedulerEnabled: !!config.serviceKey,
+          schedulerEnabled: true,
         });
       }
       if (!["/api/messages", "/api/chat", "/api/confirm"].includes(path)) {

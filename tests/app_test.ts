@@ -9,6 +9,7 @@ const config: Config = {
   supabaseKey: "public-placeholder",
   openrouterKey: "server-placeholder",
   model: "test-model",
+  serviceKey: "privileged-placeholder",
   origin: "http://localhost:8000",
   port: 8000,
 };
@@ -86,7 +87,9 @@ Deno.test("authenticated queries and inserts use verified owner and user token, 
     const body = JSON.parse(String(init?.body));
     assert(body.p_role === "user" && body.p_content === "Hi");
     assert(body.user_id === undefined);
-    return Promise.resolve(response([{ role: body.p_role, content: body.p_content }]));
+    return Promise.resolve(
+      response([{ role: body.p_role, content: body.p_content }]),
+    );
   }, async () => {
     await new Database(config, "test-session", owner).insert("messages", {
       user_id: "other",
@@ -171,12 +174,19 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
       return Promise.resolve(response(null));
     }
     if (init?.method === "POST") {
-      assert(
-        url.endsWith("/rpc/append_message"),
-        "Unconfirmed action wrote outside the message RPC",
-      );
       const body = JSON.parse(String(init.body));
-      if (body.p_role === "assistant") {
+      if (body.p_role === "user") {
+        assert(url.endsWith("/rpc/append_message"));
+      } else {
+        assert(url.endsWith("/rpc/append_assistant_message"));
+        const headers = new Headers(init.headers);
+        assert(
+          headers.get("Authorization") ===
+            ["Bearer", "privileged-placeholder"].join(" "),
+          "Assistant messages must use server credentials",
+        );
+        assert(headers.get("apikey") === "privileged-placeholder");
+        assert(body.p_user_id === owner);
         assistantSaved = true;
         assert(
           body.p_proposal.op === "add_asset" &&
@@ -186,7 +196,9 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
       }
       return Promise.resolve(response([{
         id: owner,
-        role: body.p_role,
+        role: url.endsWith("/rpc/append_assistant_message")
+          ? "assistant"
+          : body.p_role,
         content: body.p_content,
         proposal: body.p_proposal,
         action_state: body.p_proposal ? "pending" : null,
@@ -243,7 +255,7 @@ Deno.test("scheduler scopes delivery by persisted reminder ID and occurrence; no
     );
     assert(Date.parse(String(call.p_next_run)) > Date.now());
   });
-  assert(startScheduler(config) === null);
+  assert(startScheduler(config));
 });
 
 Deno.test("invalid schedules are quarantined without starving healthy reminders", async () => {

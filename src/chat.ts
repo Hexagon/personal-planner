@@ -96,7 +96,7 @@ export async function chat(db: Database, config: Config, input: unknown) {
     tasks: tasks.slice(0, 100).map(brief),
     prioritized_task_ids: ranked.slice(0, 100).map((task) => task.id),
     reminders: reminders.slice(0, 100).map(brief),
-    scheduler_enabled: !!config.serviceKey,
+    scheduler_enabled: true,
     finances: financialContext(assets, ranked, profile.budget_minor),
     geography: geographicContext(
       ranked.slice(0, 100).map((task) => ({
@@ -184,27 +184,16 @@ export async function chat(db: Database, config: Config, input: unknown) {
   let proposal = null;
   if (output.proposal != null) {
     const raw = object(output.proposal);
-    let data = object(raw.data);
-    if (raw.op === "update_asset" || raw.op === "update_task") {
-      const saved = await db.owned(
-        raw.op === "update_asset" ? "assets" : "tasks",
-        data.id,
-      );
-      data = { ...saved, ...data };
-    } else if (raw.op === "set_profile") {
-      data = { ...profile, ...data };
-    }
+    const data = object(raw.data);
     proposal = {
       ...validateProposal({ op: raw.op, data }),
       currency: String(profile.currency),
     };
   }
   if (proposal) {
-    if (proposal.op === "add_reminder" && !config.serviceKey) {
-      throw new InputError("Reminders are disabled");
-    }
     if (
       proposal.op === "set_profile" &&
+      proposal.data.currency !== undefined &&
       proposal.data.currency !== profile.currency &&
       (assets.length || tasks.length)
     ) {
@@ -235,9 +224,13 @@ export async function chat(db: Database, config: Config, input: unknown) {
       throw new InputError("Invalid planning constraints");
     }
     const plan = fitPlan(ranked, budget, minutes);
-    const descriptions = ranked.filter((task) =>
-      plan.task_ids.includes(task.id)
-    ).map((task) => task.description);
+    const selected = ranked.filter((task) => plan.task_ids.includes(task.id));
+    const descriptions = selected.slice(0, 20).map((task) =>
+      String(task.description).slice(0, 100)
+    );
+    if (selected.length > descriptions.length) {
+      descriptions.push(`and ${selected.length - descriptions.length} more`);
+    }
     reply += `\n\nCalculated priority-first plan: ${
       descriptions.join("; ") || "No tasks with known costs and durations fit"
     }. Cost: ${plan.cost_minor} minor units (${profile.currency}); task time: ${plan.duration_minutes} minutes. Budget used: ${budget} minor units; time available: ${minutes} minutes. Review these interpreted constraints. Travel time excluded; distances are straight-line only.`;

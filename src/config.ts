@@ -3,7 +3,7 @@ export interface Config {
   supabaseKey: string;
   openrouterKey: string;
   model: string;
-  serviceKey?: string;
+  serviceKey: string;
   origin: string;
   port: number;
 }
@@ -30,7 +30,7 @@ export function loadConfig(): Config {
     supabaseKey: required("SUPABASE_PUBLISHABLE_KEY"),
     openrouterKey: required("OPENROUTER_API_KEY"),
     model: Deno.env.get("OPENROUTER_MODEL") ?? "openai/gpt-4.1-mini",
-    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || undefined,
+    serviceKey: required("SUPABASE_SERVICE_ROLE_KEY"),
     origin,
     port,
   };

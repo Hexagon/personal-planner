@@ -7,8 +7,7 @@ import {
   uuid,
 } from "./validation.ts";
 
-export function startScheduler(config: Config): Cron | null {
-  if (!config.serviceKey) return null;
+export function startScheduler(config: Config): Cron {
   const headers = {
     apikey: config.serviceKey,
     Authorization: ["Bearer", config.serviceKey].join(" "),
