@@ -10,10 +10,11 @@ family's context; there is no cross-account household sharing.
 1. Install [Deno 2](https://deno.com/). Create your own
    [Supabase](https://supabase.com/) project and
    [OpenRouter](https://openrouter.ai/) API key.
-2. Apply `supabase/migrations/202610030001_initial.sql` in your Supabase SQL
-   editor (or use `supabase db push` if you already use the Supabase CLI). The
-   migration creates profiles, assets, tasks, messages, reminders, and planning
-   sessions, with ownership policies on every table.
+2. Apply all SQL files in `supabase/migrations/` in filename order in your
+   Supabase SQL editor (or use `supabase db push` if you already use the
+   Supabase CLI). Existing installations should apply only migrations not yet
+   applied. The migration creates profiles, assets, tasks, messages, reminders,
+   and planning sessions, with ownership policies on every table.
 3. Enable email/password authentication in Supabase. Set its Site URL to your
    app's origin and configure your confirmation-email redirects. Users confirm
    their email, return to the app, and log in with their password. For public
@@ -91,13 +92,22 @@ traffic, so reminder delivery does not depend on an always-running server.
 - “Show our tasks.” / “Mark the library task done.” / “Delete the bicycle
   asset.”
 - “Remind me every Sunday at 18:00 to plan our week, in Europe/Stockholm.”
+- “Remember that I should buy milk.”
+- “Buy a new router on my next trip to the shopping centre.”
+- “I'm going to the grocery store. What's on my shopping list?”
+- “I've bought milk and a router.” (One confirmation completes both matched
+  tasks.)
+- “Fill my day with tasks, including a visit to Copenhagen. I have 600 SEK and
+  60 minutes for tasks; leave travel time aside.”
 
 Review the exact structured proposal displayed in chat, then **Confirm** or
 **Cancel**. Even additions require confirmation. Changing priorities, completing
 tasks, deleting data, setting preferences, and creating/removing reminders all
-use the same flow. One action is proposed per turn. To alter a reminder, remove
-it and create a new one. Profile, asset, and task updates preserve fields not
-explicitly changed. Monetary proposals are bound to the currency at proposal
+use the same flow. One action is proposed per turn; a completion action can
+contain up to 20 tasks and succeeds or fails as a whole. Ambiguous item names
+require clarification rather than guessed completion. To alter a reminder,
+remove it and create a new one. Profile, asset, and task updates preserve fields
+not explicitly changed. Monetary proposals are bound to the currency at proposal
 time. If it has changed, cancel the old proposal and request a new one.
 
 ## Planning and safety boundaries
@@ -113,12 +123,32 @@ time. If it has changed, cancel the old proposal and request a new one.
 - Unknown cost/duration remains `null`, not zero. The code-calculated
   priority-first plan excludes unknowns and fits known costs/durations to the
   interpreted budget and time. Review the interpreted constraints printed with
-  every calculated plan.
+  every calculated plan. Tasks needing cost or duration estimates appear
+  separately alongside the calculated plan; they are not included in its totals.
+- Task context is generic: `kind` distinguishes ordinary tasks from purchases,
+  `category` is a free-form label, `destinations` are optional user-specified
+  place labels, and `next_trip` records trip intent without a date or timer. AI
+  interprets informal requests and typos; application code validates the result.
+  Existing tasks default to ordinary tasks; ask to classify older purchase tasks
+  before expecting them on a shopping list.
+- Shopping/task-list queries use saved open records, not AI-generated inventory.
+  Completed/cancelled tasks are excluded. Saved destination matches appear
+  separately from items whose suitability for that place is not established. No
+  store or stock lookup is performed, including for named malls.
 - Location labels and optional coordinates support geographic grouping.
   Straight-line distances are approximate; **travel time is not included**.
   There is no geocoder, live routing, traffic, business discovery, or
   opening-hours service. Supply coordinates or area labels and allow extra
   travel time yourself.
+- Visit-aware day plans work for any destination, not a predefined set of cities
+  or shops. AI can suggest saved open tasks that could be done during the visit
+  (including portable tasks). Code combines these with saved location matches,
+  then applies priority, budget, and time constraints. Unmatched AI suggestions
+  are explicitly unverified, not claims of local availability. A user-supplied
+  destination coordinate pair and radius (greater than zero, at most 1,000 km)
+  also support approximate straight-line proximity. Coordinates are not inferred
+  through geocoding. Visit/travel costs and duration require a saved task with
+  estimates or separate allowance; this is not a route or appointment optimizer.
 - Financial guidance is basic budgeting, not investment, tax, legal, or lending
   advice. The app cannot purchase anything or perform financial transactions.
 - The model can suggest and explain, but cannot execute arbitrary tools or SQL.
@@ -172,6 +202,13 @@ reminder. On Deno Deploy, verify the cron job is registered and that overlapping
 or retried invocations produce only one reminder message for an occurrence. Real
 Supabase and OpenRouter integration requires your own credentials and should be
 checked before exposing the deployment.
+
+The conversational regressions mock structured model outputs: they verify the
+request paths, validation, saved-record selection and confirmation boundaries,
+not a live model's accuracy at understanding every phrase or typo. Database
+ownership/input/atomicity tests are in `supabase/tests/task_context.sql`; run
+that file with `psql -v ON_ERROR_STOP=1` against a disposable database after
+applying the migrations. The tests roll back their fixtures.
 
 ### Modules
 

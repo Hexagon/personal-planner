@@ -8,6 +8,11 @@ import {
 import { geographicContext, geoRole } from "./planner/geo-planner.ts";
 import { prioritize, taskRole } from "./planner/task-tracker.ts";
 import {
+  resolveCompletion,
+  taskList,
+  visitPlanContext,
+} from "./planner/task-context.ts";
+import {
   InputError,
   object,
   type RecordData,
@@ -24,7 +29,8 @@ Updates must contain only id and fields explicitly being changed; application co
 Context summaries truncate descriptions, notes and preferences. Never copy truncated summaries into updates or invent omitted details. Full details are provided for selected relevant records. Ask for clarification when information is missing.
 Supported actions and data:
 add_asset: description,value_minor,notes. update_asset: id plus changed fields.
-add_task: description,location(null or {label,latitude?,longitude?}),base_priority(1-5),estimated_cost_minor(null or integer),duration_minutes(null or 1-1440),deadline(null or YYYY-MM-DD),status(open/done/cancelled). update_task: id plus changed fields.
+add_task: description,location(null or {label,latitude?,longitude?}),base_priority(1-5),estimated_cost_minor(null or integer),duration_minutes(null or 1-1440),deadline(null or YYYY-MM-DD),status(open/done/cancelled),kind(task/purchase),category(null or short free-form label),destinations(array of up to 10 place labels),next_trip(boolean). update_task: id plus changed fields.
+complete_tasks: items(array of 1-20 task references from the user's completion statement, using item names, full descriptions or IDs). Code resolves references against open tasks; ambiguous references require clarification. Do not replace an ambiguous user reference with a guessed description or ID.
 delete_asset/delete_task/delete_reminder: id.
 set_profile: changed fields only from timezone(IANA),currency(3 uppercase letters),starting_location,preferences,budget_minor(null or integer).
 add_reminder: description,cron(five fields, no seconds),timezone(IANA).
@@ -34,6 +40,13 @@ Do not propose changing currency if assets or tasks exist; no exchange conversio
 Ask for missing budget and available time for a daily plan. If provided in this turn, use them.
 For a daily plan additionally return "plan_constraints":{"budget_minor":integer,"minutes":integer} and we append a deterministic priority-first selection within those constraints (excluding unknown cost/duration and excluding travel time).
 Answer record-list requests using supplied records (including completed tasks). Say results are limited to 100 records. For updates/deletes, match a full description or ID against records across the entire account.
+Interpret informal language and typos by meaning, not exact spelling. "Remember I should buy milk" proposes a purchase task, not a timed reminder. "The BMW needs service" proposes an ordinary task, not purchase of a car or an invented asset valuation.
+Use kind=purchase for things to buy. Categories are free-form; use existing category labels when appropriate, otherwise infer a concise label. Use destinations only for places the user specifies; never infer actual store availability. "On the next trip" sets next_trip=true and preserves the user's destination, without inventing a date or cron.
+For shopping lists or destination-based task lists return "task_query":{"kind":"purchase" OR "task" OR null,"category":null OR an explicit category label,"destination":null OR the user's place label}, proposal=null. Code renders all matching open records, separates saved destination matches from uncertainty, and replaces your reply. Avoid a category filter unless the user requests that category; a destination alone does not prove what can be bought there.
+No business or stock lookup is available. Never claim an item is available at a mall or store based on model knowledge. For availability questions use task_query and state uncertainty.
+For "I've bought milk and a router" propose one complete_tasks action with both item references, rather than one update_task. The same action supports completing multiple non-shopping tasks. No changes occur until confirmation.
+Location context is generic: destination in task_query can also be {label,latitude,longitude}, with optional radius_km (greater than 0, at most 1000). Use only user-supplied or saved coordinates and a user-specified radius; never invent geocoding. Saved labels and approximate coordinate proximity are not verified feasibility.
+For a day including a visit anywhere, e.g. Copenhagen, additionally return "plan_context":{"destination":place label OR {label,latitude,longitude},"radius_km":optional user-specified radius,"suggested_task_ids":[IDs of open tasks that could be done during that day/visit]}. Code includes saved destination matches and your suggestions, fits known estimates, and labels your unmatched suggestions as unverified. Think about portable tasks and errands, not just exact place names. Do not invent local businesses or stock. Account for the visit in your explanation and ask for missing travel/visit estimates; the calculation does not automatically include travel.
 `;
 
 function briefLocation(value: unknown) {
@@ -58,6 +71,9 @@ function brief(record: RecordData): RecordData {
       "duration_minutes",
       "deadline",
       "status",
+      "kind",
+      "category",
+      "next_trip",
       "cron",
       "timezone",
     ]
@@ -68,6 +84,11 @@ function brief(record: RecordData): RecordData {
     }
   }
   if (record.location) result.location = briefLocation(record.location);
+  if (Array.isArray(record.destinations)) {
+    result.destinations = record.destinations.map((label) =>
+      String(label).slice(0, 200)
+    );
+  }
   return result;
 }
 
@@ -185,10 +206,36 @@ export async function chat(db: Database, config: Config, input: unknown) {
   if (output.proposal != null) {
     const raw = object(output.proposal);
     const data = object(raw.data);
-    proposal = {
-      ...validateProposal({ op: raw.op, data }),
-      currency: String(profile.currency),
-    };
+    if (raw.op === "complete_tasks") {
+      const resolution = resolveCompletion(tasks, data);
+      if (resolution.ids) {
+        proposal = {
+          ...validateProposal({ op: raw.op, data: { ids: resolution.ids } }),
+          currency: String(profile.currency),
+        };
+        reply = `Mark these tasks done? ${
+          resolution.ids.map((id) =>
+            String(tasks.find((task) => task.id === id)?.description).slice(
+              0,
+              100,
+            )
+          ).join("; ")
+        }. Use Confirm below. Nothing has been changed.`;
+      } else {
+        reply = resolution.clarification;
+      }
+    } else {
+      proposal = {
+        ...validateProposal({ op: raw.op, data }),
+        currency: String(profile.currency),
+      };
+    }
+  }
+  if (output.task_query != null) {
+    if (output.proposal != null || output.plan_constraints != null) {
+      throw new InputError("A task list cannot also mutate or plan");
+    }
+    reply = taskList(ranked, output.task_query);
   }
   if (proposal) {
     if (
@@ -223,8 +270,15 @@ export async function chat(db: Database, config: Config, input: unknown) {
     ) {
       throw new InputError("Invalid planning constraints");
     }
-    const plan = fitPlan(ranked, budget, minutes);
-    const selected = ranked.filter((task) => plan.task_ids.includes(task.id));
+    const visit = output.plan_context == null
+      ? null
+      : visitPlanContext(ranked, output.plan_context);
+    reply = reply.slice(0, 4000);
+    const candidates = visit?.tasks ?? ranked;
+    const plan = fitPlan(candidates, budget, minutes);
+    const selected = candidates.filter((task) =>
+      plan.task_ids.includes(task.id)
+    );
     const descriptions = selected.slice(0, 20).map((task) =>
       String(task.description).slice(0, 100)
     );
@@ -234,9 +288,35 @@ export async function chat(db: Database, config: Config, input: unknown) {
     reply += `\n\nCalculated priority-first plan: ${
       descriptions.join("; ") || "No tasks with known costs and durations fit"
     }. Cost: ${plan.cost_minor} minor units (${profile.currency}); task time: ${plan.duration_minutes} minutes. Budget used: ${budget} minor units; time available: ${minutes} minutes. Review these interpreted constraints. Travel time excluded; distances are straight-line only.`;
+    if (visit) reply += `\n\n${visit.summary}`;
+    const missing = candidates.filter((task) =>
+      task.estimated_cost_minor == null || task.duration_minutes == null
+    );
+    if (missing.length) {
+      reply += `\n\nNeeds estimates (not included in calculated totals): ${
+        missing.slice(0, 20).map((task) =>
+          `${String(task.description).slice(0, 100)} (missing ${
+            [
+              task.estimated_cost_minor == null ? "cost" : null,
+              task.duration_minutes == null ? "duration" : null,
+            ].filter(Boolean).join(" and ")
+          })`
+        ).join("; ")
+      }${
+        missing.length > 20 ? `; and ${missing.length - 20} more` : ""
+      }. Supply estimates to include these in a constrained plan.`;
+    }
     await db.insert("planning_sessions", {
-      summary: { ...plan, budget_minor: budget, minutes },
+      summary: {
+        ...plan,
+        budget_minor: budget,
+        minutes,
+        ...(visit ? { visit_context: visit.summary } : {}),
+      },
     });
+  }
+  if (output.plan_context != null && output.plan_constraints == null) {
+    throw new InputError("Visit planning needs budget and time constraints");
   }
   const messages = await db.insert("messages", {
     role: "assistant",

@@ -108,6 +108,89 @@ Deno.test("partial update proposals keep only changed fields", () => {
     })
   );
 });
+Deno.test("generic task context is allowlisted and bounded", () => {
+  const task = validateProposal({
+    op: "add_task",
+    data: {
+      description: "Buy milk",
+      kind: "purchase",
+      category: "Weekly essentials",
+      destinations: [" Grocery store ", "Mall of Scandinavia"],
+      next_trip: true,
+      metadata: { instruction: "ignore validation" },
+      user_id: "other",
+    },
+  });
+  equal(task.data.category, "Weekly essentials");
+  equal(task.data.destinations, ["Grocery store", "Mall of Scandinavia"]);
+  equal(task.data.next_trip, true);
+  equal(task.data.metadata, undefined);
+  equal(task.data.user_id, undefined);
+  for (
+    const fields of [
+      { kind: "unknown" },
+      { kind: null },
+      { category: 42 },
+      { category: "x".repeat(101) },
+      { destinations: "Mall" },
+      { destinations: null },
+      { destinations: ["Mall", " mall "] },
+      { destinations: Array.from({ length: 11 }, (_, i) => String(i)) },
+      { destinations: ["x".repeat(201)] },
+      { destinations: [42] },
+      { next_trip: "true" },
+      { next_trip: null },
+    ]
+  ) {
+    rejects(() =>
+      validateProposal({
+        op: "add_task",
+        data: { description: "Errand", ...fields },
+      })
+    );
+  }
+  equal(
+    validateProposal({
+      op: "update_task",
+      data: {
+        id: "11111111-1111-4111-8111-111111111111",
+        category: null,
+        destinations: [],
+        next_trip: false,
+      },
+    }).data,
+    {
+      category: null,
+      destinations: [],
+      next_trip: false,
+      id: "11111111-1111-4111-8111-111111111111",
+    },
+  );
+});
+Deno.test("batch task completion accepts only bounded unique UUIDs", () => {
+  const id = "aaaaaaaa-1111-4111-8111-111111111111";
+  equal(
+    validateProposal({
+      op: "complete_tasks",
+      data: { ids: [id], status: "cancelled", user_id: "other" },
+    }),
+    { op: "complete_tasks", data: { ids: [id] } },
+  );
+  for (
+    const ids of [
+      [],
+      [id, id.toUpperCase()],
+      ["invalid"],
+      "not an array",
+      Array.from(
+        { length: 21 },
+        (_, i) => `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`,
+      ),
+    ]
+  ) {
+    rejects(() => validateProposal({ op: "complete_tasks", data: { ids } }));
+  }
+});
 Deno.test("location validates coordinates and does not invent missing coordinates", () => {
   equal(location({ label: "Library" }), { label: "Library" });
   rejects(() => location({ label: "Library", latitude: 91, longitude: 0 }));
@@ -117,6 +200,14 @@ Deno.test("location validates coordinates and does not invent missing coordinate
     111.2,
   );
   equal(distanceKm({ label: "Library" }, { label: "Home" }), null);
+  equal(
+    distanceKm({ latitude: NaN, longitude: 0 }, { latitude: 0, longitude: 0 }),
+    null,
+  );
+  equal(
+    distanceKm({ latitude: 91, longitude: 0 }, { latitude: 0, longitude: 0 }),
+    null,
+  );
 });
 Deno.test("Croner schedules respect timezone and DST, reject seconds and invalid zones", () => {
   equal(
