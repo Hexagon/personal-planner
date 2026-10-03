@@ -164,7 +164,7 @@ Deno.test("cancellation reports a lost pending-state race", async () => {
     assert((await result.json()).result === false);
   });
 });
-Deno.test("AI action is validated and saved pending without mutating assets", async () => {
+Deno.test("AI action is validated and saved pending without mutating tasks", async () => {
   let assistantSaved = false;
   await mock((input, init) => {
     const url = String(input);
@@ -190,12 +190,12 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
           choices: [{
             message: {
               content: JSON.stringify({
-                reply: "Add this bike? Confirm below.",
+                reply: "Add this task? Confirm below.",
                 proposal: {
-                  op: "add_asset",
+                  op: "add_task",
                   data: {
-                    description: "Bike",
-                    value_minor: 60000,
+                    name: "Bike service",
+                    short_description: "Service the family bikes",
                     user_id: "other",
                   },
                 },
@@ -224,9 +224,9 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
         assert(body.p_user_id === owner);
         assistantSaved = true;
         assert(
-          body.p_proposal.op === "add_asset" &&
+          body.p_proposal.op === "add_task" &&
             body.p_proposal.data.user_id === undefined &&
-            body.p_proposal.currency === "USD",
+            body.p_proposal.currency === undefined,
         );
       }
       return Promise.resolve(response([{
@@ -244,8 +244,7 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
         response([{
           id: owner,
           timezone: "UTC",
-          currency: "USD",
-          budget_minor: null,
+          preferences: "",
         }]),
       );
     }
@@ -253,7 +252,7 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
   }, async () => {
     const result = await createHandler(config)(
       request("/api/chat", {
-        content: "Add a bike",
+        content: "Service the bikes",
         ai_consent: true,
         online_search: true,
         model: "deepseek/deepseek-v4-pro",

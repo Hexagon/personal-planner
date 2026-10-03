@@ -17,12 +17,15 @@
   from the locked reminder and atomically advance the expected occurrence.
 - Ask for inline confirmation before data or schedule mutations. Confirmations
   must be transactional and safe to retry. Never claim a proposal is already
-  saved as an asset/task before confirmation.
-- Calculate money and plan constraints in code using integer minor units. Asset
-  values are informational, not spending money. Unknown costs/durations remain
-  unknown, and currency changes must not relabel existing money.
+  saved as a task before confirmation.
+- Everything is a task with fixed fields: name, AI-written short description,
+  user-only full description, location name, priority, due date, status and
+  timestamps. Urgency, ordering and lists are calculated in code. Send every
+  open task to the model as a compact row, but never read or send full
+  descriptions into model context. Keep the open-task cap enforced in
+  `confirm_action`.
 - Use IANA timezones and five-field Croner schedules. Keep scheduled work
-  bounded, idempotent, and free of autonomous AI or task/budget mutations.
+  bounded, idempotent, and free of autonomous AI or task mutations.
 - Render untrusted content as text, not HTML. Preserve consent before AI use.
   Never commit/log secrets, tokens, chat content, or raw provider responses.
 - Add migrations and ownership/input tests for schema/action changes. Keep tests

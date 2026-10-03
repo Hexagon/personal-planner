@@ -69,6 +69,54 @@ async function api(path, body) {
   }
   return result;
 }
+const actionNames = {
+  add_task: "Add task",
+  update_task: "Update task",
+  complete_tasks: "Mark tasks done",
+  delete_task: "Delete task",
+  set_profile: "Update settings",
+  add_reminder: "Add reminder",
+  delete_reminder: "Delete reminder",
+};
+const fieldNames = {
+  name: "Name",
+  short_description: "Short description",
+  full_description: "Full description",
+  location_name: "Location",
+  priority: "Priority",
+  due_date: "Due date",
+  status: "Status",
+  ids: "Tasks",
+  id: "ID",
+  timezone: "Timezone",
+  preferences: "Preferences",
+  description: "Description",
+  cron: "Schedule",
+  next_run: "Next run",
+};
+// Untrusted proposal content is rendered as text only.
+function describeProposal(proposal) {
+  const list = document.createElement("dl");
+  const add = (term, value) => {
+    const name = document.createElement("dt");
+    name.textContent = term;
+    const detail = document.createElement("dd");
+    detail.textContent = value;
+    list.append(name, detail);
+  };
+  add("Action", actionNames[proposal.op] ?? String(proposal.op));
+  for (const [key, value] of Object.entries(proposal.data ?? {})) {
+    add(
+      fieldNames[key] ?? key,
+      value === null
+        ? "None"
+        : Array.isArray(value)
+        ? `${value.length} selected`
+        : String(value),
+    );
+  }
+  return list;
+}
 function render(messages) {
   const container = element("messages");
   for (const message of messages) {
@@ -87,9 +135,7 @@ function render(messages) {
     content.textContent = message.content;
     article.append(heading, content);
     if (message.proposal) {
-      const details = document.createElement("pre");
-      details.textContent = JSON.stringify(message.proposal, null, 2);
-      article.append(details);
+      article.append(describeProposal(message.proposal));
       if (message.action_state === "pending") {
         for (const cancel of [false, true]) {
           const button = document.createElement("button");

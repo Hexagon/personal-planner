@@ -30,36 +30,6 @@ export type Database = {
   };
   "public": {
     Tables: {
-      "assets": {
-        Row: {
-          "created_at": string;
-          "description": string;
-          "id": string;
-          "metadata": NonNullable<Json>;
-          "notes": string;
-          "user_id": string;
-          "value_minor": number;
-        };
-        Insert: {
-          "created_at"?: string;
-          "description": string;
-          "id"?: string;
-          "metadata"?: NonNullable<Json>;
-          "notes"?: string;
-          "user_id": string;
-          "value_minor": number;
-        };
-        Update: {
-          "created_at"?: string;
-          "description"?: string;
-          "id"?: string;
-          "metadata"?: NonNullable<Json>;
-          "notes"?: string;
-          "user_id"?: string;
-          "value_minor"?: number;
-        };
-        Relationships: [];
-      };
       "messages": {
         Row: {
           "action_state": string | null;
@@ -90,53 +60,23 @@ export type Database = {
         };
         Relationships: [];
       };
-      "planning_sessions": {
-        Row: {
-          "created_at": string;
-          "id": string;
-          "summary": NonNullable<Json>;
-          "user_id": string;
-        };
-        Insert: {
-          "created_at"?: string;
-          "id"?: string;
-          "summary"?: NonNullable<Json>;
-          "user_id": string;
-        };
-        Update: {
-          "created_at"?: string;
-          "id"?: string;
-          "summary"?: NonNullable<Json>;
-          "user_id"?: string;
-        };
-        Relationships: [];
-      };
       "profiles": {
         Row: {
-          "budget_minor": number | null;
           "created_at": string;
-          "currency": string;
           "id": string;
           "preferences": string;
-          "starting_location": Json | null;
           "timezone": string;
         };
         Insert: {
-          "budget_minor"?: number | null;
           "created_at"?: string;
-          "currency"?: string;
           "id": string;
           "preferences"?: string;
-          "starting_location"?: Json | null;
           "timezone"?: string;
         };
         Update: {
-          "budget_minor"?: number | null;
           "created_at"?: string;
-          "currency"?: string;
           "id"?: string;
           "preferences"?: string;
-          "starting_location"?: Json | null;
           "timezone"?: string;
         };
         Relationships: [];
@@ -176,54 +116,45 @@ export type Database = {
       };
       "tasks": {
         Row: {
-          "base_priority": number;
-          "category": string | null;
+          "completed_at": string | null;
           "created_at": string;
-          "deadline": string | null;
-          "description": string;
-          "destinations": NonNullable<Json>;
-          "duration_minutes": number | null;
-          "estimated_cost_minor": number | null;
+          "due_date": string | null;
+          "full_description": string | null;
           "id": string;
-          "kind": string;
-          "location": Json | null;
-          "metadata": NonNullable<Json>;
-          "next_trip": boolean;
+          "location_name": string | null;
+          "name": string;
+          "priority": number;
+          "short_description": string;
           "status": string;
+          "updated_at": string;
           "user_id": string;
         };
         Insert: {
-          "base_priority"?: number;
-          "category"?: string | null;
+          "completed_at"?: string | null;
           "created_at"?: string;
-          "deadline"?: string | null;
-          "description": string;
-          "destinations"?: NonNullable<Json>;
-          "duration_minutes"?: number | null;
-          "estimated_cost_minor"?: number | null;
+          "due_date"?: string | null;
+          "full_description"?: string | null;
           "id"?: string;
-          "kind"?: string;
-          "location"?: Json | null;
-          "metadata"?: NonNullable<Json>;
-          "next_trip"?: boolean;
+          "location_name"?: string | null;
+          "name": string;
+          "priority"?: number;
+          "short_description": string;
           "status"?: string;
+          "updated_at"?: string;
           "user_id": string;
         };
         Update: {
-          "base_priority"?: number;
-          "category"?: string | null;
+          "completed_at"?: string | null;
           "created_at"?: string;
-          "deadline"?: string | null;
-          "description"?: string;
-          "destinations"?: NonNullable<Json>;
-          "duration_minutes"?: number | null;
-          "estimated_cost_minor"?: number | null;
+          "due_date"?: string | null;
+          "full_description"?: string | null;
           "id"?: string;
-          "kind"?: string;
-          "location"?: Json | null;
-          "metadata"?: NonNullable<Json>;
-          "next_trip"?: boolean;
+          "location_name"?: string | null;
+          "name"?: string;
+          "priority"?: number;
+          "short_description"?: string;
           "status"?: string;
+          "updated_at"?: string;
           "user_id"?: string;
         };
         Relationships: [];
@@ -282,25 +213,6 @@ export type Database = {
       "ensure_profile": {
         Args: Record<PropertyKey, never>;
         Returns: undefined;
-      };
-      "record_plan": {
-        Args: { "p_summary": Json };
-        Returns: {
-          "created_at": string;
-          "id": string;
-          "summary": NonNullable<Json>;
-          "user_id": string;
-        }[];
-        SetofOptions: {
-          from: "*";
-          to: "planning_sessions";
-          isOneToOne: false;
-          isSetofReturn: true;
-        };
-      };
-      "valid_task_destinations": {
-        Args: { "p_destinations": Json };
-        Returns: boolean;
       };
     };
     Enums: {

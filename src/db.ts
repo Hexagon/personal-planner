@@ -32,50 +32,47 @@ export class Database {
     return response.status === 204 ? null : response.json();
   }
   async list(
-    table: "profiles" | "assets" | "tasks" | "messages" | "reminders",
+    table: "profiles" | "tasks" | "messages" | "reminders",
+    columns = "*",
   ) {
     const owner = table === "profiles" ? "id" : "user_id";
     const rows: RecordData[] = [];
     const pageSize = 100;
     for (let offset = 0;; offset += pageSize) {
       const records = await this.request(
-        `${table}?${owner}=eq.${this.userId}&order=created_at.desc,id.asc&limit=${pageSize}&offset=${offset}`,
+        `${table}?select=${columns}&${owner}=eq.${this.userId}&order=created_at.desc,id.asc&limit=${pageSize}&offset=${offset}`,
       ) as RecordData[];
       rows.push(...records);
       if (records.length < pageSize || table === "messages") return rows;
     }
   }
-  insert(table: "messages" | "planning_sessions", data: RecordData) {
-    if (table === "messages") {
-      if (data.role === "assistant") {
-        return this.request(
-          "rpc/append_assistant_message",
-          "POST",
-          {
-            p_user_id: this.userId,
-            p_content: data.content,
-            p_proposal: data.proposal ?? null,
-          },
-          true,
-        ) as Promise<RecordData[]>;
-      }
-      if (data.role !== "user" || data.proposal != null) {
-        throw new InputError("Invalid message");
-      }
-      return this.request("rpc/append_message", "POST", {
-        p_role: "user",
-        p_content: data.content,
-        p_proposal: null,
-      }) as Promise<RecordData[]>;
+  insert(table: "messages", data: RecordData) {
+    if (table !== "messages") throw new InputError("Invalid table");
+    if (data.role === "assistant") {
+      return this.request(
+        "rpc/append_assistant_message",
+        "POST",
+        {
+          p_user_id: this.userId,
+          p_content: data.content,
+          p_proposal: data.proposal ?? null,
+        },
+        true,
+      ) as Promise<RecordData[]>;
     }
-    return this.request("rpc/record_plan", "POST", {
-      p_summary: data.summary,
+    if (data.role !== "user" || data.proposal != null) {
+      throw new InputError("Invalid message");
+    }
+    return this.request("rpc/append_message", "POST", {
+      p_role: "user",
+      p_content: data.content,
+      p_proposal: null,
     }) as Promise<RecordData[]>;
   }
   async ensureProfile() {
     await this.request("rpc/ensure_profile", "POST", {});
   }
-  async owned(table: "assets" | "tasks" | "reminders", id: unknown) {
+  async owned(table: "tasks" | "reminders", id: unknown) {
     const rows = await this.request(
       `${table}?id=eq.${uuid(id)}&user_id=eq.${this.userId}&limit=1`,
     ) as RecordData[];
