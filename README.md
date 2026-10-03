@@ -94,8 +94,10 @@ time. If it has changed, cancel the old proposal and request a new one.
 - Financial guidance is basic budgeting, not investment, tax, legal, or lending
   advice. The app cannot purchase anything or perform financial transactions.
 - The model can suggest and explain, but cannot execute arbitrary tools or SQL.
-  Application validators allow only known fields/actions. Database constraints,
-  ownership policies, and transactional RPCs provide another boundary.
+  Application validators allow only known fields/actions. Authenticated users
+  have read-only table access; owner-validated RPCs provide the narrow write
+  paths, and confirmation/cancellation can only transition pending proposals.
+  Database constraints and ownership policies provide another boundary.
 - Before sending chat, users must accept a notice that chat and selected saved
   task, location, and financial data go through OpenRouter and its model
   provider. Treat AI replies as suggestions; do not include secrets in chat.
@@ -153,12 +155,13 @@ and should be checked before exposing the deployment.
 No agent framework, autonomous loops, frontend build step, or extra services.
 Requests use one model call, at most 1,800 output tokens, a 30-second AI
 timeout, and one active mutation/chat request per account per process. Context
-is limited to 100 records per table and 12 recent messages. Bounded summaries
-and selected full details keep saved context below 120,000 characters without
-blocking cleanup requests. Summaries truncate long text; ask by full description
-or record ID to prioritize full details. This is a small family planner, not an
-unbounded archive. Add external rate limits and provider spending limits as
-appropriate. Logs intentionally omit credentials, provider responses, and chat
-content.
+summarizes at most 100 recent records per table and includes 12 recent messages.
+Owner-scoped pagination fetches all saved assets, tasks, and reminders so an
+older record can still be managed by its full description or ID; relevant full
+details and bounded summaries keep model context below 120,000 characters.
+Summaries truncate long text, and record-list replies are limited to 100 items.
+This is a small family planner, not an unbounded archive. Add external rate
+limits and provider spending limits as appropriate. Logs intentionally omit
+credentials, provider responses, and chat content.
 
 MIT licensed; see `LICENSE`.

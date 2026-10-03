@@ -81,10 +81,12 @@ Deno.test("authenticated queries and inserts use verified owner and user token, 
       (await createHandler(config)(request("/api/messages"))).status === 200,
     );
   });
-  await mock((_input, init) => {
+  await mock((input, init) => {
+    assert(String(input).endsWith("/rpc/append_message"));
     const body = JSON.parse(String(init?.body));
-    assert(body.user_id === owner);
-    return Promise.resolve(response([body]));
+    assert(body.p_role === "user" && body.p_content === "Hi");
+    assert(body.user_id === undefined);
+    return Promise.resolve(response([{ role: body.p_role, content: body.p_content }]));
   }, async () => {
     await new Database(config, "test-session", owner).insert("messages", {
       user_id: "other",
@@ -121,6 +123,22 @@ Deno.test("consent, confirmation IDs and request bodies are validated before wri
     );
   });
 });
+Deno.test("cancellation reports a lost pending-state race", async () => {
+  await mock((input) => {
+    const url = String(input);
+    if (url.includes("/auth/v1/user")) {
+      return Promise.resolve(response({ id: owner }));
+    }
+    assert(url.endsWith("/rpc/cancel_action"));
+    return Promise.resolve(response(false));
+  }, async () => {
+    const result = await createHandler(config)(
+      request("/api/confirm", { message_id: owner, cancel: true }),
+    );
+    assert(result.status === 200);
+    assert((await result.json()).result === false);
+  });
+});
 Deno.test("AI action is validated and saved pending without mutating assets", async () => {
   let assistantSaved = false;
   await mock((input, init) => {
@@ -149,21 +167,30 @@ Deno.test("AI action is validated and saved pending without mutating assets", as
         }),
       );
     }
+    if (url.endsWith("/rpc/ensure_profile")) {
+      return Promise.resolve(response(null));
+    }
     if (init?.method === "POST") {
       assert(
-        url.endsWith("/messages"),
-        "Unconfirmed action wrote to a data table",
+        url.endsWith("/rpc/append_message"),
+        "Unconfirmed action wrote outside the message RPC",
       );
       const body = JSON.parse(String(init.body));
-      if (body.role === "assistant") {
+      if (body.p_role === "assistant") {
         assistantSaved = true;
         assert(
-          body.action_state === "pending" &&
-            body.proposal.data.user_id === undefined &&
-            body.proposal.currency === "USD",
+          body.p_proposal.op === "add_asset" &&
+            body.p_proposal.data.user_id === undefined &&
+            body.p_proposal.currency === "USD",
         );
       }
-      return Promise.resolve(response([{ ...body, id: owner }]));
+      return Promise.resolve(response([{
+        id: owner,
+        role: body.p_role,
+        content: body.p_content,
+        proposal: body.p_proposal,
+        action_state: body.p_proposal ? "pending" : null,
+      }]));
     }
     if (url.includes("/profiles?")) {
       return Promise.resolve(

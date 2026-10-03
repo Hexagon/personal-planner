@@ -2,6 +2,7 @@ const config = await fetch("/api/config").then((response) => response.json());
 const element = (id) => document.getElementById(id);
 let session = null;
 let busy = false;
+const renderedMessages = new Map();
 const notice = (message) => {
   element("notice").textContent = message;
 };
@@ -27,7 +28,10 @@ function setSession(value) {
   element("login").hidden = !!session;
   element("chat").hidden = !session;
   element("logout").hidden = !session;
-  if (!session) element("messages").replaceChildren();
+  if (!session) {
+    element("messages").replaceChildren();
+    renderedMessages.clear();
+  }
 }
 async function api(path, body) {
   if (!session) throw new Error("Please log in");
@@ -60,9 +64,13 @@ async function api(path, body) {
 }
 function render(messages) {
   const container = element("messages");
-  container.replaceChildren();
   for (const message of messages) {
-    const article = document.createElement("article");
+    const previous = renderedMessages.get(message.id);
+    if (previous && previous.dataset.actionState === String(message.action_state)) {
+      continue;
+    }
+    const article = previous ?? document.createElement("article");
+    article.replaceChildren();
     article.className = message.role === "user" ? "user" : "assistant";
     const heading = document.createElement("strong");
     heading.textContent = message.role === "user" ? "You" : "Planner";
@@ -79,13 +87,20 @@ function render(messages) {
           button.textContent = cancel ? "Cancel" : "Confirm";
           button.onclick = () =>
             action(async () => {
-              await api("/api/confirm", { message_id: message.id, cancel });
+              const result = await api("/api/confirm", {
+                message_id: message.id,
+                cancel,
+              });
               await refresh();
-              notice(
-                cancel
+              if (!result.result) {
+                notice(
+                  "Proposal status changed elsewhere. See refreshed status.",
+                );
+              } else {
+                notice(cancel
                   ? "Proposal cancelled."
-                  : "Confirmation processed. See proposal status.",
-              );
+                  : "Confirmation processed. See proposal status.");
+              }
             });
           article.append(button);
         }
@@ -95,7 +110,11 @@ function render(messages) {
         article.append(state);
       }
     }
-    container.append(article);
+    article.dataset.actionState = String(message.action_state);
+    if (!previous) {
+      renderedMessages.set(message.id, article);
+      container.append(article);
+    }
   }
 }
 async function refresh() {

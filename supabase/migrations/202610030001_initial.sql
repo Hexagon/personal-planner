@@ -95,13 +95,88 @@ create policy planning_sessions_owner on public.planning_sessions for all to aut
 revoke all on public.profiles, public.assets, public.tasks, public.messages,
   public.reminders, public.planning_sessions from public, anon, authenticated;
 grant usage on schema public to authenticated, service_role;
-grant select, insert, update, delete on public.profiles, public.assets, public.tasks,
-  public.messages, public.reminders, public.planning_sessions to authenticated, service_role;
+grant select on public.profiles, public.assets, public.tasks, public.messages,
+  public.reminders, public.planning_sessions to authenticated;
+grant all on public.profiles, public.assets, public.tasks, public.messages,
+  public.reminders, public.planning_sessions to service_role;
+
+create function public.ensure_profile()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+   raise exception 'Authentication required' using errcode = '42501';
+  end if;
+  insert into public.profiles(id) values (v_user_id) on conflict (id) do nothing;
+end;
+$$;
+
+create function public.append_message(
+  p_role text, p_content text, p_proposal jsonb default null
+)
+returns setof public.messages
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+   raise exception 'Authentication required' using errcode = '42501';
+  end if;
+  if p_role is null or p_role not in ('user', 'assistant')
+   or p_content is null or length(p_content) not between 1 and 20000
+   or (p_proposal is not null and p_proposal <> 'null'::jsonb and (
+     p_role <> 'assistant' or jsonb_typeof(p_proposal) <> 'object'
+     or octet_length(p_proposal::text) > 65536
+   )) then
+   raise exception 'Invalid message';
+  end if;
+  return query
+   insert into public.messages(user_id, role, content, proposal, action_state)
+   values (v_user_id, p_role, p_content,
+     nullif(p_proposal, 'null'::jsonb),
+     case
+       when p_proposal is null or p_proposal = 'null'::jsonb then null
+       else 'pending'
+     end)
+   returning *;
+end;
+$$;
+
+create function public.record_plan(p_summary jsonb)
+returns setof public.planning_sessions
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+   raise exception 'Authentication required' using errcode = '42501';
+  end if;
+  if p_summary is null or jsonb_typeof(p_summary) <> 'object'
+    or octet_length(p_summary::text) > 65536 then
+   raise exception 'Invalid plan summary';
+  end if;
+  return query
+   insert into public.planning_sessions(user_id, summary)
+   values (v_user_id, p_summary)
+   returning *;
+end;
+$$;
 
 create function public.confirm_action(p_message_id uuid)
 returns boolean
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $$
 declare
@@ -287,7 +362,37 @@ end;
 $$;
 
 revoke all on function public.confirm_action(uuid) from public, anon, authenticated;
+create function public.cancel_action(p_message_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_rows bigint;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+  update public.messages set action_state = 'cancelled'
+  where id = p_message_id and user_id = v_user_id
+    and role = 'assistant' and action_state = 'pending';
+  get diagnostics v_rows = row_count;
+  return v_rows = 1;
+end;
+$$;
+
+revoke all on function public.ensure_profile() from public, anon, authenticated;
+revoke all on function public.append_message(text, text, jsonb)
+  from public, anon, authenticated;
+revoke all on function public.record_plan(jsonb) from public, anon, authenticated;
+revoke all on function public.cancel_action(uuid) from public, anon, authenticated;
+grant execute on function public.ensure_profile() to authenticated;
+grant execute on function public.append_message(text, text, jsonb) to authenticated;
+grant execute on function public.record_plan(jsonb) to authenticated;
 grant execute on function public.confirm_action(uuid) to authenticated;
+grant execute on function public.cancel_action(uuid) to authenticated;
 
 create function public.deliver_reminder(
   p_id uuid, p_expected_run timestamptz, p_next_run timestamptz

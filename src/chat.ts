@@ -33,7 +33,7 @@ Do not claim changes have happened. Do not provide schedules unless scheduler_en
 Do not propose changing currency if assets or tasks exist; no exchange conversion is available.
 Ask for missing budget and available time for a daily plan. If provided in this turn, use them.
 For a daily plan additionally return "plan_constraints":{"budget_minor":integer,"minutes":integer} and we append a deterministic priority-first selection within those constraints (excluding unknown cost/duration and excluding travel time).
-Answer record-list requests using supplied records (including completed tasks). Say results are limited to 100 records.
+Answer record-list requests using supplied records (including completed tasks). Say results are limited to 100 records. For updates/deletes, match a full description or ID against records across the entire account.
 `;
 
 function briefLocation(value: unknown) {
@@ -92,14 +92,14 @@ export async function chat(db: Database, config: Config, input: unknown) {
       preferences: String(profile.preferences ?? "").slice(0, 500),
       starting_location: briefLocation(profile.starting_location),
     },
-    assets: assets.map(brief),
-    tasks: tasks.map(brief),
-    prioritized_task_ids: ranked.map((task) => task.id),
-    reminders: reminders.map(brief),
+    assets: assets.slice(0, 100).map(brief),
+    tasks: tasks.slice(0, 100).map(brief),
+    prioritized_task_ids: ranked.slice(0, 100).map((task) => task.id),
+    reminders: reminders.slice(0, 100).map(brief),
     scheduler_enabled: !!config.serviceKey,
     finances: financialContext(assets, ranked, profile.budget_minor),
     geography: geographicContext(
-      ranked.map((task) => ({
+      ranked.slice(0, 100).map((task) => ({
         id: task.id,
         location: briefLocation(task.location),
       })),
