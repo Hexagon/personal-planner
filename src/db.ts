@@ -13,6 +13,7 @@ export class AuthError extends Error {}
 
 type Table = "profiles" | "tasks" | "messages" | "reminders";
 type Entry = Deno.KvEntry<RecordData>;
+type KvCheck = Parameters<ReturnType<Deno.Kv["atomic"]>["check"]>[number];
 const key = (table: Table, userId: string, id: string) =>
   ["planner", table, userId, id] as const;
 const taskRevisionKey = (userId: string) =>
@@ -173,7 +174,7 @@ export class Database {
         !message || message.role !== "assistant" ||
         message.action_state !== "pending"
       ) return false;
-      const checks: Deno.KvCheck[] = [{
+      const checks: KvCheck[] = [{
         key: messageKey,
         versionstamp: messageEntry.versionstamp,
       }];
@@ -400,11 +401,12 @@ export async function dueReminders(
 ): Promise<DueReminder[]> {
   const result: DueReminder[] = [];
   const end = ["planner", "due", `${before}\uffff`] as const;
+  let scanned = 0;
   for await (const index of kv.list<string>({
     start: ["planner", "due"],
     end,
-    limit,
   })) {
+    if (scanned++ >= limit) break;
     const [, , , userId, id] = index.key as Deno.KvKey;
     if (typeof userId !== "string" || typeof id !== "string") continue;
     const entry = await kv.get<RecordData>(key("reminders", userId, id));
