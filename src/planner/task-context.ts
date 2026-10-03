@@ -17,7 +17,9 @@ function normalized(value: string): string {
 
 export function taskLine(task: RecordData, today: string): string {
   const due = typeof task.due_date === "string"
-    ? `, due ${task.due_date} (${urgency(task.due_date, today)})`
+    ? `, due ${task.due_date}${
+      task.status === "open" ? ` (${urgency(task.due_date, today)})` : ""
+    }`
     : "";
   return `- ${String(task.name)} — ${
     String(task.short_description)
