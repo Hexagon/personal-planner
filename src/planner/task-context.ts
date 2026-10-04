@@ -97,6 +97,7 @@ type Resolution = { ids: string[]; clarification: null } | {
 export function resolveReferences(
   tasks: RecordData[],
   references: string[],
+  entity: "task" | "reminder" = "task",
 ): Resolution {
   const ids: string[] = [];
   for (const reference of references) {
@@ -114,14 +115,14 @@ export function resolveReferences(
       return {
         ids: null,
         clarification: matches.length
-          ? `Which task do you mean by "${reference}"? ${
+          ? `Which ${entity} do you mean by "${reference}"? ${
             matches.slice(0, 5).map((task) =>
               `${String(task.name)} — ${
                 String(task.short_description)
               } [${task.id}]`
             ).join("; ")
           }. Please give the full name or ID. Nothing has been changed.`
-          : `I couldn't find one task matching "${reference}". Please give its full name or ID. Nothing has been changed.`,
+          : `I couldn't find one ${entity} matching "${reference}". Please give its full name or ID. Nothing has been changed.`,
       };
     }
     const id = String(matches[0].id);
@@ -129,7 +130,7 @@ export function resolveReferences(
       return {
         ids: null,
         clarification:
-          "Several references match the same task. Please list each task once. Nothing has been changed.",
+          `Several references match the same ${entity}. Please list each ${entity} once. Nothing has been changed.`,
       };
     }
     ids.push(id);

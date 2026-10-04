@@ -53,6 +53,7 @@ export function reminderSelection(reminders: RecordData[], reference: unknown) {
       short_description: `${row.cron}; ${row.timezone}`,
     })),
     [text(reference, 1000)],
+    "reminder",
   );
 }
 
@@ -72,7 +73,7 @@ export function reminderReply(reminders: RecordData[], input: unknown): string {
   if (query.reminder != null) {
     const resolution = reminderSelection(reminders, query.reminder);
     if (!resolution.ids) {
-      return resolution.clarification.replaceAll("task", "reminder");
+      return resolution.clarification;
     }
     matching = reminders.filter((row) => row.id === resolution.ids[0]);
   }

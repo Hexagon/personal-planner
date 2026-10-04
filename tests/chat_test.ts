@@ -518,6 +518,13 @@ Deno.test("saved query shapes and one-operation boundary reject malformed model 
       run({ tasks: [], output: { reply: "Hi", ...output } }, "Show saved data"),
     );
   }
+  await rejects(
+    run({
+      tasks: [],
+      output: { reply: "Hi", settings_query: {}, proposal_query: {} },
+    }, "Show settings"),
+    "Use at most one proposal or query",
+  );
 });
 
 Deno.test("reminder targets clarify unknown/ambiguous references and reject foreign IDs", async () => {
@@ -532,12 +539,34 @@ Deno.test("reminder targets clarify unknown/ambiguous references and reject fore
         next_run: "2026-10-11T18:00:00.000Z",
       });
     }
+    for (
+      const [n, description] of [
+        [54, "Task planning"],
+        [55, "Task planning week"],
+      ] as const
+    ) {
+      await kv.set(["planner", "reminders", owner, id(n)], {
+        id: id(n),
+        description,
+        cron: "0 18 * * 0",
+        timezone: "UTC",
+        active: true,
+        next_run: "2026-10-11T18:00:00.000Z",
+      });
+    }
     await kv.set(["planner", "reminders", "other", id(52)], {
       id: id(52),
       description: "Foreign Sunday",
     });
   };
-  for (const reference of ["Plan Sunday", "Unknown Sunday", id(52)]) {
+  for (
+    const reference of [
+      "Plan Sunday",
+      "Unknown Sunday",
+      "task planning no match",
+      id(52),
+    ]
+  ) {
     const result = await run({
       tasks: [],
       setup,
@@ -552,6 +581,39 @@ Deno.test("reminder targets clarify unknown/ambiguous references and reject fore
     assert(result.message.proposal === null);
     assert(String(result.message.content).includes("Nothing has been changed"));
   }
+  const missingTaskNamedReminder = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Not found",
+      reminder_query: { reminder: "task planning no match" },
+    },
+  }, "Find task planning reminder");
+  assert(
+    String(missingTaskNamedReminder.message.content).includes(
+      '"task planning no match"',
+    ),
+  );
+  assert(
+    !String(missingTaskNamedReminder.message.content).includes(
+      '"reminder planning no match"',
+    ),
+  );
+  const ambiguousTaskNamedReminders = await run({
+    tasks: [],
+    setup,
+    output: { reply: "Which one?", reminder_query: { reminder: "planning" } },
+  }, "Find planning reminder");
+  assert(
+    String(ambiguousTaskNamedReminders.message.content).includes(
+      'Which reminder do you mean by "planning"? Task planning',
+    ),
+  );
+  assert(
+    !String(ambiguousTaskNamedReminders.message.content).includes(
+      "Reminder planning",
+    ),
+  );
   const selected = await run({
     tasks: [],
     setup,

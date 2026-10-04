@@ -182,7 +182,7 @@ export async function chat(
   ]
     .filter((value) => value != null);
   if (queries.length > 1) {
-    throw new InputError("Use one proposal, task list or detail per message");
+    throw new InputError("Use at most one proposal or query per message");
   }
   if (output.proposal != null) {
     const raw = object(output.proposal);
@@ -228,7 +228,7 @@ export async function chat(
         reply = `Delete reminder [${
           resolution.ids[0]
         }]? Use Confirm below. Nothing has been changed.`;
-      } else reply = resolution.clarification.replaceAll("task", "reminder");
+      } else reply = resolution.clarification;
     } else {
       proposal = validateProposal({ op: raw.op, data });
     }

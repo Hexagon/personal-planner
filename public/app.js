@@ -282,7 +282,7 @@ element("chat-form").onsubmit = (event) => {
       ...(openrouterKey ? { openrouter_key: openrouterKey } : {}),
     });
     render(message.related_messages ?? []);
-    if (message.pending_cursor) pendingCursor = message.pending_cursor;
+    pendingCursor = message.pending_cursor;
     element("prompt").value = "";
     element("online-search").checked = false;
     await refresh();
