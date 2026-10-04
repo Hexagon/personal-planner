@@ -48,6 +48,19 @@ function sendStatus(message, tone = "info") {
     element("send-error-details").textContent = "";
   }
 }
+function setComposerExpanded(expanded) {
+  const form = element("chat-form");
+  const toggle = element("composer-toggle");
+  form.classList.toggle("compact", !expanded);
+  element("prompt").rows = expanded ? 3 : 1;
+  toggle.textContent = expanded ? "⤡" : "⤢";
+  toggle.setAttribute("aria-expanded", String(expanded));
+  const label = `${expanded ? "Collapse" : "Expand"} message composer`;
+  toggle.setAttribute("aria-label", label);
+  toggle.title = label;
+}
+element("composer-toggle").onclick = () =>
+  setComposerExpanded(element("chat-form").classList.contains("compact"));
 function requestFailure(error) {
   sendStatus(
     "Couldn’t complete the request. Expand for details. Your draft is kept; check the conversation before retrying.",
@@ -111,6 +124,7 @@ function setSession(value) {
     pendingCursor = null;
     pendingUser = null;
     element("prompt").value = "";
+    setComposerExpanded(false);
     element("online-search").checked = false;
     element("timing").textContent = "";
     element("timing").hidden = true;
@@ -614,6 +628,7 @@ element("chat-form").onsubmit = (event) => {
     pendingUser?.remove();
     pendingUser = temporaryMessage("user", content);
     const thinking = temporaryMessage("assistant", "Thinking", "thinking");
+    setComposerExpanded(true);
     sendStatus("Sending your message. Planner is thinking…");
     element("send").textContent = "Sending…";
     scrollToLatest();
