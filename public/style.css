@@ -35,10 +35,14 @@ header {
   justify-content: space-between;
   margin-bottom: 1.5rem;
 }
-.brand-mark,
+.brand-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+}
 .welcome-mark {
-  color: var(--accent);
-  font-size: 2.2rem;
+  width: 3.5rem;
+  height: 3.5rem;
 }
 h1 {
   font-size: 1.15rem;

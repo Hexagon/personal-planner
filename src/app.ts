@@ -25,6 +25,7 @@ export function createHandler(config: Config, kv: Deno.Kv) {
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/settings.js": ["settings.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
+    "/icon.svg": ["icon.svg", "image/svg+xml"],
   };
   const headers = {
     "Cache-Control": "no-store",
