@@ -25,7 +25,7 @@ export function uuid(value: unknown): string {
   ) {
     throw new InputError("Invalid record ID");
   }
-  return value;
+  return value.toLowerCase();
 }
 function integer(value: unknown, min: number, max: number): number {
   if (

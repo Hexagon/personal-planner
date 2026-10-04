@@ -1,100 +1,82 @@
 # Personal Planner
 
-A small, chat-first personal/family planner. One Deno server, Supabase
-Auth/Postgres, one OpenRouter model, and scheduled reminders. The only interface
-is login and chat—including inline confirmations. One account represents one
+A small, chat-first personal/family planner. One Deno server, Deno KV, Auth.js
+OAuth, one OpenRouter model, and scheduled reminders. The only interface is
+login and chat—including inline confirmations. One account represents one
 family's context; there is no cross-account household sharing.
 
 ## Setup
 
-1. Install [Deno 2](https://deno.com/), create a
-   [Supabase](https://supabase.com/) project, and get an
+1. Install [Deno 2](https://deno.com/) and get an
    [OpenRouter](https://openrouter.ai/) API key.
-2. Apply the SQL files in `supabase/migrations/` in filename order using the
-   Supabase SQL editor. Alternatively, install the
-   [Supabase CLI](https://supabase.com/docs/guides/cli), then log in, link this
-   repository to your project using its project ref (replace the placeholder
-   below), and push the migrations:
-
-   ```sh
-   supabase login
-   supabase link --project-ref <project-ref>
-   supabase db push
-   ```
-
-   Existing installations should apply only migrations not yet applied.
-3. In Supabase, enable email/password authentication. Set the Auth Site URL and
-   allowed email-confirmation redirect URL to your app's origin
-   (`http://localhost:8000` locally). After signup, users confirm their email
-   and log in with their password.
-4. From the repository root, copy `.env.example` to `.env`:
+2. Create a Google OAuth client, a GitHub OAuth app, or both. Set the authorized
+   callback URL to `<APP_ORIGIN>/auth/callback/google` and/or
+   `<APP_ORIGIN>/auth/callback/github` (locally, `http://localhost:8000`).
+3. From the repository root, copy `.env.example` to `.env`:
 
    ```sh
    cp .env.example .env
    ```
 
-   Fill in the values. Find the project URL and API keys in your Supabase
-   project settings:
-   - `SUPABASE_URL`: your project URL.
-   - `SUPABASE_PUBLISHABLE_KEY`: public publishable key or legacy anon key.
-     **Never put a secret/service-role key here.**
+   Fill in the values:
+   - `AUTH_SECRET`: a random secret with at least 32 bytes, for example
+     `openssl rand -base64 32`.
+   - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: set both to enable Google
+     sign-in; leave both empty to disable it.
+   - `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`: set both to enable GitHub
+     sign-in; leave both empty to disable it. At least one provider pair is
+     required.
    - `OPENROUTER_API_KEY`: server-only API key.
    - `OPENROUTER_MODEL`: the default model, either `deepseek/deepseek-v4-flash`
      or `deepseek/deepseek-v4-pro` (default: Flash). The chat interface lets
      users choose between these models; availability and pricing depend on
      OpenRouter.
-   - `SUPABASE_SERVICE_ROLE_KEY`: required server-only legacy service-role key.
-     It is used only by the Deno server for trusted assistant messages and
-     unattended reminders; never expose it to the browser.
    - `APP_ORIGIN`: exact browser origin, default `http://localhost:8000`. Set
      this to your HTTPS origin when deployed.
    - `PORT`: default `8000`.
-5. Start the server from the repository root:
+4. Start the server from the repository root:
 
    ```sh
    deno task start
    ```
 
-   Open <http://localhost:8000>, create an account, confirm the email if
-   required, and log in. Use `deno task dev` during development. Self-hosted
-   deployments need a continuously running process for Croner reminders; for
-   Deno Deploy, follow the deployment instructions below.
+   Open <http://localhost:8000> and sign in with a configured provider. Use
+   `deno task dev` during development. Self-hosted deployments need a
+   continuously running process for Croner reminders; for Deno Deploy, follow
+   the deployment instructions below.
 
-Credentials belong to each self-hosting deployment, not individual app accounts.
-The browser receives only the Supabase URL and public key. Auth tokens are held
-in memory, not local storage; reloading requires login. `.env` is ignored by
-Git.
+The local Deno KV database is stored in `data/planner.sqlite3`; it is created
+automatically and ignored by Git. Each OAuth provider identity has its own
+planner data; Google and GitHub sign-ins are not automatically linked. Auth.js
+keeps its signed, encrypted session in an HttpOnly cookie. OAuth credentials,
+`AUTH_SECRET`, and the OpenRouter key stay server-side. Existing Supabase data
+and accounts are not imported.
 
 ## Checks
 
 Run `deno task fmt`, `deno task lint`, or `deno task test` to check formatting,
 lint rules, or tests individually. `deno task check` runs all three along with
 type checks for both server entrypoints and the browser app. GitHub Actions runs
-this full check on pushes and pull requests, then starts the local Supabase
-database, applies migrations, runs pgTAP tests, and verifies generated database
-types are up to date. The app tests mock external providers and require no
-credentials; database CI requires Docker.
+the same checks on pushes and pull requests. Tests use in-memory Deno KV and
+mock the AI provider; no credentials, network access, or Docker are required.
 
 ### Deno Deploy
 
-Create a Deno Deploy project from this repository and set `src/deploy.ts` as its
-entrypoint. No frontend build is required; ensure the deployment includes
-`public/`, which the server reads to serve the login and chat pages. Configure
-`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `OPENROUTER_API_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, and `APP_ORIGIN` as server-side environment
-variables/secrets in the project settings. Set `APP_ORIGIN` to the exact HTTPS
-origin. Never expose the OpenRouter or service-role key to client-side code.
+Create a Deno Deploy project from this repository, assign it a Deno KV database,
+and set `src/deploy.ts` as its entrypoint. No frontend build is required; ensure
+the deployment includes `public/`, which the server reads to serve the login and
+chat pages. Configure `AUTH_SECRET`, at least one complete OAuth client pair,
+`OPENROUTER_API_KEY`, and `APP_ORIGIN` as server-side environment variables or
+secrets. Set `APP_ORIGIN` to the exact HTTPS origin and register the matching
+provider callback URL. Configure OAuth consent and provider-side rate limits.
+Add rate limiting at a trusted edge proxy/provider for the app's `/api/chat` and
+`/api/confirm` routes, and set provider spending limits for OpenRouter.
 
-Set the Supabase Auth Site URL to the deployed origin and allow the appropriate
-email-confirmation redirect URLs. Configure Supabase SMTP, signup restrictions,
-and Auth rate limits for public use. Add rate limiting at a trusted edge
-proxy/provider for the app's `/api/chat` and `/api/confirm` routes, and set
-provider spending limits for OpenRouter.
-
-The deploy entrypoint registers a native `Deno.cron` job that polls due
-reminders every minute. The same bounded query and atomic `deliver_reminder` RPC
-are used as in self-hosted mode. Cron invocations are separate from HTTP
-traffic, so reminder delivery does not depend on an always-running server.
+The deploy entrypoint registers a native `Deno.cron` job that polls a bounded
+Deno KV due index every minute. Reminder messages and expected-occurrence
+advances are committed in one atomic KV transaction. Cron invocations are
+separate from HTTP traffic, so reminder delivery does not depend on an
+always-running server.
 
 ## Try it in chat
 
@@ -134,7 +116,7 @@ Everything the planner tracks is a task with a fixed set of fields:
 | `priority`          | 1–5, default 3.                                                |
 | `due_date`          | Optional date, in your profile timezone.                       |
 | `status`            | `open`, `done` or `cancelled`.                                 |
-| `created_at`        | Set by the database; `updated_at`/`completed_at` too.          |
+| `created_at`        | Set by the server; `updated_at`/`completed_at` too.            |
 
 - **Urgency** is calculated in code from the due date: `overdue`, `today`,
   `soon` (within 3 days), `later`, or `none`. Open tasks are ordered by priority
@@ -151,8 +133,8 @@ Everything the planner tracks is a task with a fixed set of fields:
   placeholder in later AI context. Text you type in chat is still part of the
   recent chat history the AI sees.
 - **At most 300 open tasks per account.** This keeps “all open tasks in context”
-  bounded. Complete, cancel or delete tasks to add more; the database enforces
-  the cap during confirmation.
+  bounded. Complete, cancel or delete tasks to add more; a compare-and-swap KV
+  transaction enforces the cap during confirmation.
 - Lists (“What's at ICA?”, “What's urgent?”) are rendered by code from saved
   records, filtered by location (case-insensitive), urgency and status. Without
   a location filter, tasks are grouped by location.
@@ -165,12 +147,11 @@ Everything the planner tracks is a task with a fixed set of fields:
 - There is no money, budget, cost, or duration tracking, and the app cannot
   purchase anything or perform financial transactions.
 - The model can suggest and explain, but cannot execute arbitrary tools or SQL.
-  Application validators allow only known fields/actions. Authenticated users
-  have read-only table access and can append only their own user messages.
-  Confirmation/cancellation use owner-validated RPCs; trusted assistant messages
-  are written server-side with the privileged key. Confirmation can only
-  transition pending proposals. Database constraints and ownership policies
-  provide another boundary.
+  Application validators allow only known fields/actions. The server derives the
+  owner from the verified Auth.js session and prefixes every user-data key with
+  that owner; client/model-supplied owner IDs are ignored. Confirmation,
+  cancellation, the open-task cap, and reminder delivery use atomic KV
+  transactions. Confirmation can only transition pending proposals.
 - Before sending chat, users must accept a notice that chat and open tasks'
   names, short descriptions, locations, priorities and dates go through
   OpenRouter and its model provider. Online search is an optional per-message
@@ -183,33 +164,21 @@ Everything the planner tracks is a task with a fixed set of fields:
   and are never saved without inline confirmation. Select **Use online search**
   for a message when current public information is useful; it is off by default.
 
-## Upgrading from the asset/budget version
+## Existing data
 
-Migration `202610030003_tasks_only.sql` **permanently deletes all assets** and
-removes budget, currency, starting location, cost, duration, coordinates,
-categories, destinations and next-trip data. Export anything you need first, for
-example in the Supabase SQL editor:
-
-```sql
-select * from public.assets;
-select id, description, location, estimated_cost_minor, duration_minutes
-from public.tasks;
-```
-
-Existing tasks are kept: the old description becomes the name (first 80
-characters) and short description (first 160 characters). Descriptions longer
-than 160 characters are also kept as the full description. The old location
-label becomes the location name. Pending proposals are cancelled.
+This version starts with a new Deno KV store and does not import Supabase
+accounts, tasks, messages, or reminders. Existing Supabase data remains in that
+project; export or back up anything needed before switching providers.
 
 ## Reminders
 
 Self-hosted Croner and the Deno Deploy cron job poll once a minute in UTC and
 compute each reminder's next occurrence in its IANA timezone. Only five-field
 cron expressions are accepted (minute resolution). Each tick processes at most
-50 due reminders. The database locks the reminder, verifies its expected
-occurrence, inserts a chat message scoped to its saved owner, and advances its
-next run **atomically**. Concurrent workers/retries cannot deliver the same
-occurrence twice.
+50 due reminders. The KV transaction checks the reminder's saved version,
+derives the owner from its KV key, inserts a chat message, advances its next
+run, and updates the due index **atomically**. Concurrent workers/retries cannot
+deliver the same occurrence twice.
 
 After downtime, deliver **one** catch-up reminder and skip older missed
 occurrences. Invalid schedules are disabled with a generic error log so they
@@ -217,9 +186,7 @@ cannot block other users' reminders; remove and recreate them with valid
 schedules. Transient delivery failures are retried on the next tick. Reminders
 appear in chat (refreshed every 30 seconds while visible), not email/push
 notifications. Scheduled planning is a prompt to open chat and plan; it never
-invokes AI or changes tasks unattended. The server-side privileged key is
-required for assistant replies and reminder delivery; it is never sent to the
-browser.
+invokes AI or changes tasks unattended.
 
 ## Development and checks
 
@@ -228,39 +195,28 @@ deno task check
 ```
 
 This runs formatting, linting, server/browser syntax/type checks, and Deno
-tests. Tests use mocked HTTP providers—no credentials, network permissions, or
-paid AI requests are needed. They exercise authorization, ownership scoping,
-request limits, proposal validation, full-description isolation, the open-task
-cap, deterministic urgency/lists, and Croner timezones. The database migration
-was additionally exercised against PostgreSQL for RLS, transaction rollback,
-concurrent confirmations, and duplicate reminder delivery.
+tests. Tests use in-memory Deno KV and a mocked AI provider—no credentials or
+paid AI requests are needed. They exercise OAuth sessions, ownership scoping,
+request limits, proposal validation, full-description isolation, atomic
+confirmation and task-cap behavior, reminder idempotency, deterministic
+urgency/lists, and Croner timezones.
 
 For a live deployment, use two test accounts to verify separate chat/tasks,
 confirm and cancel proposals, and schedule a minute-level reminder. On Deno
 Deploy, verify the cron job is registered and that overlapping or retried
-invocations produce only one reminder message for an occurrence. Real Supabase
-and OpenRouter integration requires your own credentials and should be checked
-before exposing the deployment.
+invocations produce only one reminder message for an occurrence. OAuth and
+OpenRouter integration require your own credentials and should be checked before
+exposing the deployment.
 
 The conversational regressions mock structured model outputs: they verify the
 request paths, validation, saved-record selection and confirmation boundaries,
-not a live model's accuracy at understanding every phrase or typo. Database
-ownership/input/cap/atomicity tests are in `supabase/tests/tasks.sql`; run them
-locally with Docker and the Supabase CLI:
-
-```sh
-supabase db start
-supabase test db
-```
-
-The tests use pgTAP and roll back their fixtures. Regenerate
-`src/database.types.ts` with `supabase gen types typescript --local` and format
-it with `deno fmt` after schema changes.
+not a live model's accuracy at understanding every phrase or typo.
 
 ### Modules
 
 - `src/app.ts`, `src/main.ts`: native HTTP server and API boundaries.
-- `src/db.ts`: Supabase Auth verification and owner-scoped REST access.
+- `src/auth.ts`: Auth.js OAuth providers, session cookies, and verification.
+- `src/db.ts`: owner-scoped Deno KV records and atomic operations.
 - `src/chat.ts`: one bounded model request with three focused internal roles.
 - `src/planner/`: urgency and priority ordering, location grouping, task lists,
   details and reference resolution.
@@ -268,19 +224,21 @@ it with `deno fmt` after schema changes.
 - `src/scheduler.ts`: bounded polling and transactional reminder delivery;
   `src/deploy.ts` registers the Deno Deploy cron trigger.
 - `public/`: dependency-free login/chat UI.
-- `supabase/migrations/`: schema, RLS, and confirmation/delivery RPCs.
+- `data/planner.sqlite3`: local Deno KV database (created automatically; ignored
+  by Git).
 
-No agent framework, autonomous loops, frontend build step, or required extra
-services. The per-account in-flight request guard is in-memory and only applies
-within one server instance; it does not coordinate requests across Deno Deploy
-instances. Use edge rate limiting for public routes and rely on the database's
-transactional confirmation/delivery operations for cross-instance safety.
-Requests use one model call, at most 1,800 output tokens, a 30-second AI
-timeout, and one active mutation/chat request per account per process. Context
-contains every open task (at most 300) as compact rows, up to 100 reminders, and
-12 recent messages; full descriptions and finished tasks are excluded. Lists
-show at most 300 tasks. This is a small family planner, not an unbounded
-archive. Add external rate limits and provider spending limits as appropriate.
-Logs intentionally omit credentials, provider responses, and chat content.
+No agent framework, autonomous loops, frontend build step, or database service
+is required. OAuth and the AI provider remain external services. The per-account
+in-flight request guard is in-memory and only applies within one server
+instance; it does not coordinate requests across Deno Deploy instances. Use edge
+rate limiting for public routes and rely on the KV's transactional
+confirmation/delivery operations for cross-instance safety. Requests use one
+model call, at most 1,800 output tokens, a 30-second AI timeout, and one active
+mutation/chat request per account per process. Context contains every open task
+(at most 300) as compact rows, up to 100 reminders, and 12 recent messages; full
+descriptions and finished tasks are excluded. Lists show at most 300 tasks. This
+is a small family planner, not an unbounded archive. Add external rate limits
+and provider spending limits as appropriate. Logs intentionally omit
+credentials, provider responses, and chat content.
 
 MIT licensed; see `LICENSE`.

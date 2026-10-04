@@ -6,11 +6,9 @@ import { detailPrefix } from "../src/planner/task-context.ts";
 
 const owner = "11111111-1111-4111-8111-111111111111";
 const config: Config = {
-  supabaseUrl: "https://database.example",
-  supabaseKey: "public-placeholder",
   openrouterKey: "server-placeholder",
   model: "test-model",
-  serviceKey: "server-service-placeholder",
+  authSecret: "test-auth-secret-for-planner-tests-at-least-32-bytes",
   origin: "http://localhost:8000",
   port: 8000,
 };
@@ -43,8 +41,16 @@ interface Harness {
 }
 async function run(harness: Harness, content: string) {
   const original = globalThis.fetch;
-  const saved: RecordData[] = [];
   let modelRequest = "";
+  const kv = await Deno.openKv(":memory:");
+  const db = new Database(kv, owner);
+  await db.ensureProfile();
+  for (const row of harness.tasks) {
+    await kv.set(["planner", "tasks", owner, String(row.id)], row);
+  }
+  for (const row of harness.history ?? []) {
+    await db.insert("messages", { role: row.role, content: row.content });
+  }
   const json = (body: unknown) =>
     Promise.resolve(new Response(JSON.stringify(body)));
   globalThis.fetch = (input, init) => {
@@ -56,53 +62,18 @@ async function run(harness: Harness, content: string) {
         choices: [{ message: { content: JSON.stringify(harness.output) } }],
       });
     }
-    if (init?.method === "POST") {
-      if (url.endsWith("/rpc/ensure_profile")) return json(null);
-      const body = JSON.parse(String(init.body));
-      if (url.endsWith("/rpc/append_message")) {
-        return json([{ role: "user", content: body.p_content }]);
-      }
-      if (url.endsWith("/rpc/append_assistant_message")) {
-        assert(body.p_user_id === owner);
-        saved.push(body);
-        return json([{
-          role: "assistant",
-          content: body.p_content,
-          proposal: body.p_proposal,
-          action_state: body.p_proposal ? "pending" : null,
-        }]);
-      }
-      throw new Error("Unexpected mutation");
-    }
-    assert(url.includes(`=eq.${owner}`), "Queries must be owner-scoped");
-    if (url.includes("/profiles?")) {
-      return json([{ id: owner, timezone: "UTC", preferences: "" }]);
-    }
-    if (url.includes("/tasks?id=")) {
-      const target = /id=eq\.([^&]+)/.exec(url)?.[1];
-      return json(harness.tasks.filter((row) => row.id === target));
-    }
-    if (url.includes("/tasks?")) {
-      assert(
-        url.includes("select=") && !url.includes("full_description") &&
-          !url.includes("select=*"),
-        "Task context must not select full descriptions",
-      );
-      const offset = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
-      return json(harness.tasks.slice(offset, offset + 100));
-    }
-    if (url.includes("/messages?")) return json(harness.history ?? []);
-    return json([]);
+    throw new Error("Unexpected network request");
   };
   try {
     const message = await chat(
-      new Database(config, "test-session", owner),
+      db,
       config,
       content,
     );
-    return { message, saved, modelRequest };
+    return { message, modelRequest };
   } finally {
     globalThis.fetch = original;
+    await kv.close();
   }
 }
 async function rejects(promise: Promise<unknown>, text?: string) {

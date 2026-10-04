@@ -1,13 +1,15 @@
 {
+  "unstable": ["kv", "cron"],
   "tasks": {
-    "start": "deno run --env-file=.env --allow-env --allow-net --allow-read=public src/main.ts",
-    "dev": "deno run --env-file=.env --allow-env --allow-net --allow-read=public --watch=src,public src/main.ts",
+    "start": "deno run --env-file=.env --allow-env --allow-net --allow-read=public,data --allow-write=data src/main.ts",
+    "dev": "deno run --env-file=.env --allow-env --allow-net --allow-read=public,data --allow-write=data --watch=src,public src/main.ts",
     "fmt": "deno fmt --check",
     "lint": "deno lint",
     "test": "deno test",
-    "check": "deno task fmt && deno task lint && deno check src/main.ts public/app.js && deno check --unstable-cron src/deploy.ts && deno task test"
+    "check": "deno task fmt && deno task lint && deno check src/main.ts public/app.js && deno check src/deploy.ts && deno task test"
   },
   "imports": {
+    "@auth/core": "npm:@auth/core@0.41.3",
     "croner": "npm:croner@10.0.1"
   }
 }

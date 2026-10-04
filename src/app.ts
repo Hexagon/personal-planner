@@ -1,9 +1,10 @@
 import { availableModels, type Config, isAvailableModel } from "./config.ts";
-import { authenticate, AuthError } from "./db.ts";
+import { authenticate, AuthError, handleAuth } from "./auth.ts";
+import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
 import { InputError, object } from "./validation.ts";
 
-export function createHandler(config: Config) {
+export function createHandler(config: Config, kv: Deno.Kv) {
   const active = new Set<string>();
   const files: Record<string, [string, string]> = {
     "/": ["index.html", "text/html; charset=utf-8"],
@@ -15,7 +16,7 @@ export function createHandler(config: Config) {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy":
-      `default-src 'self'; connect-src 'self' ${config.supabaseUrl}; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
+      "default-src 'self'; connect-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   };
   const json = (value: unknown, status = 200) =>
     new Response(JSON.stringify(value), {
@@ -36,13 +37,32 @@ export function createHandler(config: Config) {
           },
         );
       }
+      if (
+        path.startsWith("/auth/") && ["GET", "POST"].includes(request.method)
+      ) {
+        if (
+          request.method === "POST" &&
+          request.headers.get("Origin") !== config.origin
+        ) return json({ error: "Origin not allowed" }, 403);
+        const response = await handleAuth(request, config);
+        for (const [name, value] of Object.entries(headers)) {
+          response.headers.set(name, value);
+        }
+        return response;
+      }
       if (request.method === "GET" && path === "/api/config") {
         return json({
-          supabaseUrl: config.supabaseUrl,
-          supabaseKey: config.supabaseKey,
           schedulerEnabled: true,
           model: config.model,
           models: availableModels,
+          providers: [
+            ...(config.googleClientId
+              ? [{ id: "google", name: "Google" }]
+              : []),
+            ...(config.githubClientId
+              ? [{ id: "github", name: "GitHub" }]
+              : []),
+          ],
         });
       }
       if (!["/api/messages", "/api/chat", "/api/confirm"].includes(path)) {
@@ -55,7 +75,8 @@ export function createHandler(config: Config) {
         request.method === "POST" &&
         request.headers.get("Origin") !== config.origin
       ) return json({ error: "Origin not allowed" }, 403);
-      const db = await authenticate(request, config);
+      const userId = await authenticate(request, config);
+      const db = new Database(kv, userId);
       if (path === "/api/messages") {
         return json((await db.list("messages")).reverse());
       }

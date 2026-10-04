@@ -1,9 +1,11 @@
 export interface Config {
-  supabaseUrl: string;
-  supabaseKey: string;
   openrouterKey: string;
   model: string;
-  serviceKey: string;
+  authSecret: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  githubClientId?: string;
+  githubClientSecret?: string;
   origin: string;
   port: number;
 }
@@ -25,14 +27,41 @@ export function loadConfig(): Config {
     if (!value) throw new Error(`Missing environment variable: ${name}`);
     return value;
   };
-  const supabaseUrl = new URL(required("SUPABASE_URL"));
-  if (
-    supabaseUrl.protocol !== "https:" && supabaseUrl.hostname !== "localhost"
-  ) {
-    throw new Error("Supabase must use HTTPS (except local development)");
+  const authSecret = required("AUTH_SECRET");
+  if (new TextEncoder().encode(authSecret).length < 32) {
+    throw new Error("AUTH_SECRET must be at least 32 bytes");
   }
-  const origin =
-    new URL(Deno.env.get("APP_ORIGIN") ?? "http://localhost:8000").origin;
+  const appOrigin = new URL(
+    Deno.env.get("APP_ORIGIN") ?? "http://localhost:8000",
+  );
+  if (
+    appOrigin.protocol !== "https:" &&
+    (appOrigin.protocol !== "http:" || appOrigin.hostname !== "localhost")
+  ) {
+    throw new Error("APP_ORIGIN must use HTTPS (except localhost)");
+  }
+  if (
+    appOrigin.pathname !== "/" || appOrigin.search || appOrigin.hash ||
+    appOrigin.username || appOrigin.password
+  ) {
+    throw new Error(
+      "APP_ORIGIN must be an origin without a path or credentials",
+    );
+  }
+  const origin = appOrigin.origin;
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const githubClientId = Deno.env.get("GITHUB_CLIENT_ID");
+  const githubClientSecret = Deno.env.get("GITHUB_CLIENT_SECRET");
+  if (!!googleClientId !== !!googleClientSecret) {
+    throw new Error("Configure both Google OAuth environment variables");
+  }
+  if (!!githubClientId !== !!githubClientSecret) {
+    throw new Error("Configure both GitHub OAuth environment variables");
+  }
+  if (!googleClientId && !githubClientId) {
+    throw new Error("Configure at least one OAuth provider");
+  }
   const model = Deno.env.get("OPENROUTER_MODEL") ??
     availableModels[0].id;
   if (!isAvailableModel(model)) {
@@ -43,11 +72,15 @@ export function loadConfig(): Config {
     throw new Error("Invalid PORT");
   }
   return {
-    supabaseUrl: supabaseUrl.origin,
-    supabaseKey: required("SUPABASE_PUBLISHABLE_KEY"),
     openrouterKey: required("OPENROUTER_API_KEY"),
     model,
-    serviceKey: required("SUPABASE_SERVICE_ROLE_KEY"),
+    authSecret,
+    ...(googleClientId && googleClientSecret
+      ? { googleClientId, googleClientSecret }
+      : {}),
+    ...(githubClientId && githubClientSecret
+      ? { githubClientId, githubClientSecret }
+      : {}),
     origin,
     port,
   };

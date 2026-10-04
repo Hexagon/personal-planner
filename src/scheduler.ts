@@ -1,62 +1,21 @@
 import { Cron } from "croner";
-import type { Config } from "./config.ts";
-import {
-  InputError,
-  nextOccurrence,
-  type RecordData,
-  uuid,
-} from "./validation.ts";
+import { deliverReminder, dueReminders, quarantineReminder } from "./db.ts";
+import { InputError, nextOccurrence } from "./validation.ts";
 
-export async function runSchedulerTick(config: Config): Promise<void> {
-  const headers = {
-    apikey: config.serviceKey,
-    Authorization: ["Bearer", config.serviceKey].join(" "),
-    "Content-Type": "application/json",
-  };
+export async function runSchedulerTick(kv: Deno.Kv): Promise<void> {
   try {
-    const now = new Date();
-    const response = await fetch(
-      `${config.supabaseUrl}/rest/v1/reminders?active=eq.true&next_run=lte.${
-        encodeURIComponent(now.toISOString())
-      }&order=next_run.asc&limit=50`,
-      { headers, signal: AbortSignal.timeout(15000) },
-    );
-    if (!response.ok) throw new Error("Reminder query failed");
-    const reminders: RecordData[] = await response.json();
+    const reminders = await dueReminders(kv, new Date().toISOString(), 50);
     for (const reminder of reminders) {
       try {
-        const next = nextOccurrence(reminder.cron, reminder.timezone, now);
-        const delivered = await fetch(
-          `${config.supabaseUrl}/rest/v1/rpc/deliver_reminder`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              p_id: reminder.id,
-              p_expected_run: reminder.next_run,
-              p_next_run: next,
-            }),
-            signal: AbortSignal.timeout(15000),
-          },
+        const nextRun = nextOccurrence(
+          reminder.row.cron,
+          reminder.row.timezone,
+          new Date(),
         );
-        if (!delivered.ok) throw new Error("Delivery failed");
+        await deliverReminder(kv, reminder, nextRun);
       } catch (error) {
         if (error instanceof InputError) {
-          // Quarantine broken records so they cannot starve the global due queue.
-          const disabled = await fetch(
-            `${config.supabaseUrl}/rest/v1/reminders?id=eq.${
-              uuid(reminder.id)
-            }&next_run=eq.${encodeURIComponent(String(reminder.next_run))}`,
-            {
-              method: "PATCH",
-              headers,
-              body: JSON.stringify({ active: false }),
-              signal: AbortSignal.timeout(15000),
-            },
-          );
-          if (!disabled.ok) {
-            throw new Error("Could not quarantine invalid reminder");
-          }
+          await quarantineReminder(kv, reminder);
           console.error(
             "An invalid reminder was disabled; recreate it with a valid schedule",
           );
@@ -72,12 +31,12 @@ export async function runSchedulerTick(config: Config): Promise<void> {
   }
 }
 
-export function startScheduler(config: Config): Cron {
+export function startScheduler(kv: Deno.Kv): Cron {
   // One bounded catch-up message per reminder, skipping older missed occurrences.
   const job = new Cron(
     "* * * * *",
     { timezone: "UTC", protect: true },
-    () => runSchedulerTick(config),
+    () => runSchedulerTick(kv),
   );
   void job.trigger();
   return job;

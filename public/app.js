@@ -14,24 +14,8 @@ const notice = (message) => {
   element("notice").textContent = message;
 };
 
-async function auth(path, body) {
-  const response = await fetch(`${config.supabaseUrl}/auth/v1/${path}`, {
-    method: "POST",
-    headers: { apikey: config.supabaseKey, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(
-      "Authentication failed. Check your credentials or confirmation email.",
-    );
-  }
-  return result;
-}
 function setSession(value) {
-  session = value?.access_token
-    ? { ...value, expires_at: Date.now() + value.expires_in * 1000 }
-    : null;
+  session = value?.user?.id ? value : null;
   element("login").hidden = !!session;
   element("chat").hidden = !session;
   element("logout").hidden = !session;
@@ -42,25 +26,13 @@ function setSession(value) {
 }
 async function api(path, body) {
   if (!session) throw new Error("Please log in");
-  if (session.expires_at < Date.now() + 60000) {
-    try {
-      setSession(
-        await auth("token?grant_type=refresh_token", {
-          refresh_token: session.refresh_token,
-        }),
-      );
-    } catch {
-      setSession(null);
-      throw new Error("Session expired. Please log in again.");
-    }
-  }
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     headers: {
-      Authorization: ["Bearer", session.access_token].join(" "),
       "Content-Type": "application/json",
     },
     body: body === undefined ? undefined : JSON.stringify(body),
+    credentials: "same-origin",
   });
   const result = await response.json();
   if (!response.ok) {
@@ -191,54 +163,50 @@ async function action(callback) {
     element("send").disabled = false;
   }
 }
-element("login-form").onsubmit = (event) => {
-  event.preventDefault();
-  action(async () => {
-    setSession(
-      await auth("token?grant_type=password", {
-        email: element("email").value,
-        password: element("password").value,
-      }),
-    );
-    element("password").value = "";
-    await refresh();
-    notice(
-      config.schedulerEnabled
-        ? "Welcome. Reminders are enabled."
-        : "Welcome. Reminders are disabled on this deployment.",
-    );
-  });
-};
-element("signup").onclick = () =>
-  action(async () => {
-    if (!element("login-form").reportValidity()) return;
-    const result = await auth("signup", {
-      email: element("email").value,
-      password: element("password").value,
-    });
-    element("password").value = "";
-    setSession(result);
-    if (session) await refresh();
-    notice(
-      session
-        ? "Welcome!"
-        : "Check your email to confirm your account, then log in.",
-    );
-  });
+function hiddenField(form, name, value) {
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = name;
+  input.value = value;
+  form.append(input);
+}
+async function csrfToken() {
+  const response = await fetch("/auth/csrf", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Could not start authentication");
+  return (await response.json()).csrfToken;
+}
+for (const provider of config.providers) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = `Continue with ${provider.name}`;
+  button.onclick = async () => {
+    try {
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = `/auth/signin/${encodeURIComponent(provider.id)}`;
+      hiddenField(form, "csrfToken", await csrfToken());
+      hiddenField(form, "callbackUrl", "/");
+      document.body.append(form);
+      form.submit();
+    } catch {
+      notice("Could not start authentication. Please try again.");
+    }
+  };
+  element("auth-providers").append(button);
+}
 element("logout").onclick = () =>
   action(async () => {
-    const token = session?.access_token;
+    const token = await csrfToken();
+    const body = new URLSearchParams({ csrfToken: token, callbackUrl: "/" });
+    const response = await fetch("/auth/signout", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error("Could not log out. Please try again.");
     setSession(null);
     element("consent").checked = false;
-    if (token) {
-      await fetch(`${config.supabaseUrl}/auth/v1/logout`, {
-        method: "POST",
-        headers: {
-          apikey: config.supabaseKey,
-          Authorization: ["Bearer", token].join(" "),
-        },
-      });
-    }
     notice("Logged out.");
   });
 element("chat-form").onsubmit = (event) => {
@@ -259,6 +227,15 @@ element("chat-form").onsubmit = (event) => {
     notice("");
   });
 };
+try {
+  const response = await fetch("/auth/session", { credentials: "same-origin" });
+  if (response.ok) {
+    setSession(await response.json());
+    if (session) await refresh();
+  }
+} catch {
+  notice("Could not check your login. Refresh the page to try again.");
+}
 setInterval(() => {
   if (session && !busy && document.visibilityState === "visible") {
     action(async () => {

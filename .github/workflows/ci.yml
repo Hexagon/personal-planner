@@ -12,13 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v3
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
       - run: deno task check
-      - run: supabase db start
-      - run: supabase test db
-      - run: supabase gen types typescript --local > src/database.types.ts
-      - run: deno fmt src/database.types.ts
-      - run: git diff --exit-code -- src/database.types.ts
