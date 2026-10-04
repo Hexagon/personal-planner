@@ -68,6 +68,7 @@ export function nextOccurrence(
   }
 }
 export const maxOpenTasks = 300;
+export const maxReminders = 100;
 export const taskStatuses = ["open", "done", "cancelled"] as const;
 function dueDate(value: unknown): string | null {
   if (value == null) return null;

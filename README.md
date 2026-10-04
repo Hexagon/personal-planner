@@ -61,7 +61,7 @@ reminder; it does not invoke AI or change tasks unattended. If the server is
 unavailable, at most one catch-up message is posted for each overdue reminder
 when service resumes; older missed occurrences are skipped. Pause, resume,
 reschedule, edit, and delete reminders in chat, and confirm each proposed
-change.
+change. Up to 100 reminders are supported per account.
 
 The **alarm icon** beside Settings opens all saved active reminders (their next
 occurrence) and open tasks with due dates, grouped into Overdue, Today,

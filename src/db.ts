@@ -1,6 +1,7 @@
 import {
   InputError,
   maxOpenTasks,
+  maxReminders,
   nextOccurrence,
   object,
   type Proposal,
@@ -18,6 +19,8 @@ const key = (table: Table, userId: string, id: string) =>
 // Every logical task change bumps this key atomically; compaction is state-preserving.
 const taskRevisionKey = (userId: string) =>
   ["planner", "task_revision", userId] as const;
+const reminderRevisionKey = (userId: string) =>
+  ["planner", "reminder_revision", userId] as const;
 const taskDescriptionKey = (userId: string, id: string) =>
   ["planner", "task_descriptions", userId, id] as const;
 const taskCompletionKey = (userId: string, id: string) =>
@@ -700,6 +703,26 @@ export class Database {
           }
         }
       } else if (proposal.op === "add_reminder") {
+        const savedReminders = await entries(
+          this.kv,
+          ["planner", "reminders", this.userId],
+        );
+        if (savedReminders.length >= maxReminders) {
+          throw new InputError(
+            `At most ${maxReminders} reminders are allowed; delete one first`,
+          );
+        }
+        const revisionKey = reminderRevisionKey(this.userId);
+        const revisionEntry = await this.kv.get<number>(revisionKey);
+        checks.push({
+          key: revisionKey,
+          versionstamp: revisionEntry.versionstamp,
+        });
+        writes.push({
+          type: "set",
+          key: revisionKey,
+          value: (revisionEntry.value ?? 0) + 1,
+        });
         const reminderId = crypto.randomUUID();
         const reminder: RecordData = {
           id: reminderId,
