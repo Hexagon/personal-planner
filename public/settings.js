@@ -110,7 +110,8 @@ export function createSettings({
   }
   function cleanupTabKeys(verifiedOwner) {
     const { keys, available } = temporary.keys();
-    let cleared = available;
+    const legacyCleared = cleanupLegacyKeys();
+    let cleared = available && legacyCleared;
     const keep = verifiedOwner
       ? `planner:v1:key:${encodeURIComponent(verifiedOwner)}`
       : null;
@@ -121,6 +122,11 @@ export function createSettings({
       }
     }
     return cleared;
+  }
+  function cleanupLegacyKeys() {
+    const tabCleared = temporary.write("openrouter-key", null);
+    const deviceCleared = persistent.write("openrouter-key", null);
+    return tabCleared && deviceCleared;
   }
   function persistPreferences() {
     if (!owner) return false;
@@ -134,12 +140,13 @@ export function createSettings({
     );
   }
   function clearKey() {
-    if (!owner) return false;
+    const legacyCleared = cleanupLegacyKeys();
+    if (!owner) return legacyCleared;
     const tabCleared = temporary.write(scoped("key"), null);
     const deviceCleared = persistent.write(scoped("key"), null);
     state.key = "";
     state.keyMode = "memory";
-    return tabCleared && deviceCleared;
+    return legacyCleared && tabCleared && deviceCleared;
   }
   return {
     snapshot,

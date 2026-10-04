@@ -152,10 +152,11 @@ particular response time. Online search may add latency too.
 Successful replies include transient timing measurements: **provider** covers
 the OpenRouter fetch and response-body parsing (including network/search time),
 while **application** covers saved-context preparation, validation and storage.
-Browser round-trip includes network and other request overhead. Compare these
-measurements across reasoning modes before attributing slow replies to
-reasoning. Timings are not stored in chat history; no keys, chat text or raw
-provider responses are logged for measurement.
+Browser round-trip measures the chat request, including network and request
+overhead but excluding the sign-in preflight and subsequent history refresh.
+Compare these measurements across reasoning modes before attributing slow
+replies to reasoning. Timings are not stored in chat history; no keys, chat text
+or raw provider responses are logged for measurement.
 
 - “Set my timezone to Europe/Stockholm.”
 - “Remember that I should buy milk at ICA.”

@@ -98,7 +98,7 @@ function setSession(value) {
   updateOnboarding();
   if (saved.tabClearFailed) {
     notice(
-      "The previous account's tab key could not be removed from browser storage. Clear this site's browser data before sharing this device.",
+      "Some previous browser credentials could not be removed. Clear this site's browser data before sharing this device.",
       "error",
     );
   }
@@ -307,7 +307,13 @@ async function action(callback, progress = "Working…") {
   try {
     await callback();
   } catch (error) {
-    notice(error.message, "error");
+    notice(
+      error.message +
+        (settings.snapshot().tabClearFailed
+          ? " Some browser credentials could not be cleared. Clear this site's browser data before sharing this device."
+          : ""),
+      "error",
+    );
   } finally {
     updateBusy(false);
     if (element("notice").textContent === progress) notice("");
@@ -597,7 +603,9 @@ try {
 } catch {
   if (!session) setSession(null);
   notice(
-    "Could not load your session or chat. Refresh the page to try again.",
+    settings.snapshot().tabClearFailed
+      ? "Could not load your session or chat, and some browser credentials could not be cleared. Clear this site's browser data before sharing this device."
+      : "Could not load your session or chat. Refresh the page to try again.",
     "error",
   );
 }

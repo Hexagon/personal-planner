@@ -147,6 +147,8 @@ Deno.test("legacy unscoped data, stale consent versions and invalid preferences 
   );
   const state = settings.setOwner(owner);
   assert(!state.key && !state.consent);
+  assert(tab.getItem("openrouter-key") === null);
+  assert(local.getItem("openrouter-key") === null);
   assert(state.model === "model-a" && state.reasoning === "off");
   assert(!settings.setPreferences("unlisted", "high"));
   assert(!settings.setPreferences("model-a", "unlisted"));
@@ -354,4 +356,45 @@ Deno.test("invalid or unreadable dedicated consent fails closed", () => {
   settings.setConsent(true);
   local.failRead = true;
   assert(!settings.syncConsent());
+});
+
+Deno.test("legacy unscoped credentials are erased on fresh logout/expiry and clearKey, never restored", () => {
+  const { settings, local, tab } = setup();
+  tab.setItem("openrouter-key", "legacy-placeholder");
+  local.setItem("openrouter-key", "legacy-placeholder");
+  assert(!settings.setOwner(null).key);
+  assert(tab.getItem("openrouter-key") === null);
+  assert(local.getItem("openrouter-key") === null);
+  settings.setOwner(owner);
+  settings.saveKey("current-placeholder", true);
+  tab.setItem("openrouter-key", "legacy-placeholder");
+  local.setItem("openrouter-key", "legacy-placeholder");
+  assert(settings.clearKey());
+  assert(tab.getItem("openrouter-key") === null);
+  assert(local.getItem("openrouter-key") === null);
+  assert(!settings.snapshot().key);
+  tab.setItem("openrouter-key", "legacy-placeholder");
+  local.setItem("openrouter-key", "legacy-placeholder");
+  settings.setOwner(null);
+  assert(tab.getItem("openrouter-key") === null);
+  assert(local.getItem("openrouter-key") === null);
+});
+
+Deno.test("failed legacy credential removal is reported during startup and forgetting keys without restoring it", () => {
+  const { settings, local, tab } = setup();
+  tab.setItem("openrouter-key", "legacy-placeholder");
+  local.setItem("openrouter-key", "legacy-placeholder");
+  tab.failRemove = local.failRemove = true;
+  const initial = settings.setOwner(null);
+  assert(initial.tabClearFailed && !initial.key);
+  const signedIn = settings.setOwner(owner);
+  assert(signedIn.tabClearFailed && !signedIn.key);
+  assert(!settings.clearKey());
+  assert(!settings.snapshot().key);
+  assert(tab.getItem("openrouter-key") === "legacy-placeholder");
+  assert(local.getItem("openrouter-key") === "legacy-placeholder");
+  tab.failRemove = local.failRemove = false;
+  assert(!settings.setOwner(owner).tabClearFailed);
+  assert(tab.getItem("openrouter-key") === null);
+  assert(local.getItem("openrouter-key") === null);
 });
