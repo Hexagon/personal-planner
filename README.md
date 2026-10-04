@@ -41,6 +41,7 @@ description and location, priority (1–5), optional due date, status, and
 timestamps. The app calculates urgency and ordering, and renders task lists from
 saved records. Up to 300 open tasks are supported. Example requests:
 
+- “Set my timezone to Europe/Stockholm.”
 - “Remember that I should buy milk at ICA.”
 - “Add car service at the garage, priority 4, due Friday.”
 - “What’s urgent?” or “What’s at ICA?”
@@ -76,6 +77,11 @@ registers a native cron job; self-hosted runs use Croner. Set the exact HTTPS
 `APP_ORIGIN`, register matching OAuth callback URLs, and apply trusted edge rate
 limits to `/api/chat` and `/api/confirm`. Set provider spending limits as
 appropriate. No frontend build is needed; include `public/`.
+
+GitHub Actions deploys only pushes to `dev` and `main`. Configure the
+`DENO_DEPLOY_PROJECT` repository variable and `DENO_DEPLOY_TOKEN` secret. Set
+`APP_ENV=production` in Deno Deploy's production environment; other or unset
+values show a Preview badge on Deno Deploy.
 
 ## Development
 
