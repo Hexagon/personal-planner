@@ -95,12 +95,13 @@ ensure the deployment includes `public/`, which the server reads to serve the
 login and chat pages. Configure `AUTH_SECRET`, at least one complete OAuth
 client pair, and `APP_ORIGIN` as server-side environment variables or secrets.
 Set `OPENROUTER_API_KEY` for an optional shared server-side key; otherwise users
-provide their own in the chat UI. Personal keys are stored only in the current
-browser tab's session storage and are forwarded to OpenRouter for chat. Set
-`APP_ORIGIN` to the exact HTTPS origin and register the matching provider
-callback URL. Configure OAuth consent and provider-side rate limits. Add rate
-limiting at a trusted edge proxy/provider for the app's `/api/chat` and
-`/api/confirm` routes, and set provider spending limits for OpenRouter.
+provide their own in Settings. Personal keys use account-scoped tab storage by
+default, or persistent device storage with explicit opt-in, and are forwarded to
+OpenRouter for chat; the server does not save them. Set `APP_ORIGIN` to the
+exact HTTPS origin and register the matching provider callback URL. Configure
+OAuth consent and provider-side rate limits. Add rate limiting at a trusted edge
+proxy/provider for the app's `/api/chat` and `/api/confirm` routes, and set
+provider spending limits for OpenRouter.
 
 The login page uses `Referrer-Policy: same-origin` so browser sign-in form POSTs
 retain their Origin header without sending referrers to external sites. Preserve
