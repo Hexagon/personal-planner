@@ -6,6 +6,10 @@ import { InputError, object, text } from "./validation.ts";
 
 export function createHandler(config: Config, kv: Deno.Kv) {
   const active = new Set<string>();
+  const oauthCallbacks = new Set([
+    ...(config.googleClientId ? ["/auth/callback/google"] : []),
+    ...(config.githubClientId ? ["/auth/callback/github"] : []),
+  ]);
   const files: Record<string, [string, string]> = {
     "/": ["index.html", "text/html; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
@@ -42,6 +46,7 @@ export function createHandler(config: Config, kv: Deno.Kv) {
       ) {
         if (
           request.method === "POST" &&
+          !oauthCallbacks.has(path) &&
           request.headers.get("Origin") !== config.origin
         ) return json({ error: "Origin not allowed" }, 403);
         const response = await handleAuth(request, config);
