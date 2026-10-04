@@ -2,7 +2,7 @@ import { encode } from "@auth/core/jwt";
 import { authConfig } from "../src/auth.ts";
 import { createHandler } from "../src/app.ts";
 import type { Config } from "../src/config.ts";
-import { Database, dueReminders } from "../src/db.ts";
+import { Database, deliverReminder, dueReminders } from "../src/db.ts";
 import { runSchedulerTick } from "../src/scheduler.ts";
 import {
   InputError,
@@ -493,7 +493,14 @@ Deno.test("reminder delivery is owner-derived, bounded, and atomically advances 
     };
     await kv.set(["planner", "reminders", otherOwner, reminderId], row);
     await kv.set(["planner", "due", due, otherOwner, reminderId], reminderId);
-    assert((await dueReminders(kv, new Date().toISOString(), 50)).length === 1);
+    const dueRemindersForTick = await dueReminders(
+      kv,
+      new Date().toISOString(),
+      50,
+    );
+    assert(dueRemindersForTick.length === 1);
+    assert(!(await deliverReminder(kv, dueRemindersForTick[0], due)));
+    assert((await new Database(kv, otherOwner).list("messages")).length === 0);
     await runSchedulerTick(kv);
     const messages = await new Database(kv, otherOwner).list("messages");
     assert(messages.length === 1);
@@ -508,6 +515,35 @@ Deno.test("reminder delivery is owner-derived, bounded, and atomically advances 
     assert((await dueReminders(kv, new Date().toISOString(), 50)).length === 0);
     await runSchedulerTick(kv);
     assert((await new Database(kv, otherOwner).list("messages")).length === 1);
+  });
+});
+
+Deno.test("task descriptions are stored separately and fetched only for details", async () => {
+  await withKv(async (kv) => {
+    const taskId = id(700);
+    const taskKey = ["planner", "tasks", owner, taskId] as const;
+    await kv.set(taskKey, {
+      id: taskId,
+      name: "Private task",
+      short_description: "A compact summary",
+      full_description: "Private details",
+      status: "open",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    const db = new Database(kv, owner);
+    const [row] = await db.list("tasks", "id,name,short_description");
+    assert(row.full_description === undefined);
+    assert(
+      (await kv.get<RecordData>(taskKey)).value?.full_description === undefined,
+    );
+    assert(
+      (await kv.get(["planner", "task_descriptions", owner, taskId])).value ===
+        "Private details",
+    );
+    assert(
+      (await db.ownedTaskDetail(taskId)).full_description ===
+        "Private details",
+    );
   });
 });
 

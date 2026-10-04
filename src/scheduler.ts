@@ -4,14 +4,13 @@ import { InputError, nextOccurrence } from "./validation.ts";
 
 export async function runSchedulerTick(kv: Deno.Kv): Promise<void> {
   try {
-    const now = new Date();
-    const reminders = await dueReminders(kv, now.toISOString(), 50);
+    const reminders = await dueReminders(kv, new Date().toISOString(), 50);
     for (const reminder of reminders) {
       try {
         const nextRun = nextOccurrence(
           reminder.row.cron,
           reminder.row.timezone,
-          now,
+          new Date(),
         );
         await deliverReminder(kv, reminder, nextRun);
       } catch (error) {

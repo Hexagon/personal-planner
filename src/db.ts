@@ -17,6 +17,8 @@ const key = (table: Table, userId: string, id: string) =>
 // Every logical task change bumps this key atomically; compaction is state-preserving.
 const taskRevisionKey = (userId: string) =>
   ["planner", "task_revision", userId] as const;
+const taskDescriptionKey = (userId: string, id: string) =>
+  ["planner", "task_descriptions", userId, id] as const;
 const taskCompletionKey = (userId: string, id: string) =>
   ["planner", "task_completions", userId, id] as const;
 const messageDateKey = (userId: string, createdAt: string, id: string) =>
@@ -90,6 +92,47 @@ async function compactTaskCompletions(
   }
 }
 
+async function compactTaskDescriptions(
+  kv: Deno.Kv,
+  userId: string,
+): Promise<void> {
+  const taskEntries = await entries(kv, ["planner", "tasks", userId]);
+  const revisionKey = taskRevisionKey(userId);
+  for (const listed of taskEntries) {
+    let migrated = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const taskEntry = await kv.get<RecordData>(listed.key);
+      const task = taskEntry.value;
+      if (!task || !("full_description" in task)) {
+        migrated = true;
+        break;
+      }
+      const id = String(task.id);
+      const descriptionKey = taskDescriptionKey(userId, id);
+      const [revisionEntry, descriptionEntry] = await Promise.all([
+        kv.get<number>(revisionKey),
+        kv.get<unknown>(descriptionKey),
+      ]);
+      const revision = (revisionEntry.value ?? 0) + 1;
+      const compactTask: RecordData = { ...task, task_revision: revision };
+      delete compactTask.full_description;
+      const result = await kv.atomic().check(
+        { key: taskEntry.key, versionstamp: taskEntry.versionstamp },
+        { key: revisionKey, versionstamp: revisionEntry.versionstamp },
+        { key: descriptionKey, versionstamp: descriptionEntry.versionstamp },
+      ).set(taskEntry.key, compactTask).set(
+        descriptionKey,
+        task.full_description,
+      ).set(revisionKey, revision).commit();
+      if (result.ok) {
+        migrated = true;
+        break;
+      }
+    }
+    if (!migrated) throw new Error("Task description migration conflicted");
+  }
+}
+
 function latestCompletions(
   completions: Entry[],
   onlyTaskId?: string,
@@ -135,6 +178,7 @@ async function effectiveTaskEntries(
   kv: Deno.Kv,
   userId: string,
 ): Promise<Array<{ entry: Entry; row: RecordData }>> {
+  await compactTaskDescriptions(kv, userId);
   await compactTaskCompletions(kv, userId);
   const [tasks, completions] = await Promise.all([
     entries(kv, ["planner", "tasks", userId]),
@@ -311,6 +355,7 @@ export class Database {
   async owned(table: "tasks" | "reminders", id: unknown): Promise<RecordData> {
     const rowId = uuid(id);
     if (table === "tasks") {
+      await compactTaskDescriptions(this.kv, this.userId);
       await compactTaskCompletions(this.kv, this.userId);
     }
     const entry = await this.kv.get<RecordData>(key(table, this.userId, rowId));
@@ -326,6 +371,15 @@ export class Database {
       );
     }
     return entry.value;
+  }
+
+  async ownedTaskDetail(id: unknown): Promise<RecordData> {
+    const row = await this.owned("tasks", id);
+    const description = await this.kv.get<string>(
+      taskDescriptionKey(this.userId, String(row.id)),
+    );
+    if (description.value) row.full_description = description.value;
+    return row;
   }
 
   async confirm(messageId: unknown, cancel: boolean): Promise<boolean> {
@@ -401,7 +455,6 @@ export class Database {
             user_id: this.userId,
             name: data.name,
             short_description: data.short_description,
-            full_description: data.full_description ?? null,
             location_name: data.location_name ?? null,
             priority: data.priority ?? 3,
             due_date: data.due_date ?? null,
@@ -411,12 +464,20 @@ export class Database {
             completed_at: null,
             task_revision: taskRevision,
           };
-          const newTaskKey = key("tasks", this.userId, String(task.id));
+          const taskId = String(task.id);
+          const newTaskKey = key("tasks", this.userId, taskId);
+          const descriptionKey = taskDescriptionKey(this.userId, taskId);
           checks.push({ key: newTaskKey, versionstamp: null });
+          checks.push({ key: descriptionKey, versionstamp: null });
           writes.push({
             type: "set",
             key: newTaskKey,
             value: task,
+          });
+          writes.push({
+            type: "set",
+            key: descriptionKey,
+            value: data.full_description ?? null,
           });
         } else if (
           proposal.op === "update_task" || proposal.op === "delete_task"
@@ -428,6 +489,10 @@ export class Database {
           }
           if (proposal.op === "delete_task") {
             writes.push({ type: "delete", key: taskEntry.key });
+            writes.push({
+              type: "delete",
+              key: taskDescriptionKey(this.userId, String(data.id)),
+            });
           } else {
             if (
               data.status === "open" && target.status !== "open" &&
@@ -439,12 +504,13 @@ export class Database {
               );
             }
             const status = data.status ?? target.status;
+            const updatedTask = { ...target, ...data };
+            delete updatedTask.full_description;
             writes.push({
               type: "set",
               key: taskEntry.key,
               value: {
-                ...target,
-                ...data,
+                ...updatedTask,
                 task_revision: taskRevision,
                 status,
                 updated_at: timestamp,
@@ -457,6 +523,13 @@ export class Database {
                   : timestamp,
               },
             });
+            if ("full_description" in data) {
+              writes.push({
+                type: "set",
+                key: taskDescriptionKey(this.userId, String(data.id)),
+                value: data.full_description ?? null,
+              });
+            }
           }
         } else {
           const ids = data.ids as string[];
@@ -628,6 +701,11 @@ export async function deliverReminder(
   reminder: DueReminder,
   nextRun: string,
 ): Promise<boolean> {
+  if (
+    !Number.isFinite(Date.parse(nextRun)) || Date.parse(nextRun) <= Date.now()
+  ) {
+    return false;
+  }
   const reminderKey = key("reminders", reminder.userId, reminder.id);
   const message: RecordData = {
     id: crypto.randomUUID(),

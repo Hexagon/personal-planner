@@ -215,7 +215,7 @@ export async function chat(
     const reference = text(object(output.task_detail).task, 1000);
     const resolution = resolveReferences(tasks, [reference]);
     reply = resolution.ids
-      ? taskDetail(await db.owned("tasks", resolution.ids[0]), today)
+      ? taskDetail(await db.ownedTaskDetail(resolution.ids[0]), today)
       : resolution.clarification.replace(
         " Nothing has been changed.",
         "",
