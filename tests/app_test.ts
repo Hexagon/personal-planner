@@ -344,6 +344,13 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
       (await db.list("tasks")).every((row) => row.status === "done"),
       "A batch completion must update every task",
     );
+    let hasCompletionEvents = false;
+    for await (
+      const _ of kv.list({
+        prefix: ["planner", "task_completions", owner],
+      })
+    ) hasCompletionEvents = true;
+    assert(!hasCompletionEvents, "Task completion events must be compacted");
     const reopen = await db.insert("messages", {
       role: "assistant",
       content: "Reopen task?",

@@ -14,6 +14,7 @@ type Entry = Deno.KvEntry<RecordData>;
 type KvCheck = Parameters<ReturnType<Deno.Kv["atomic"]>["check"]>[number];
 const key = (table: Table, userId: string, id: string) =>
   ["planner", table, userId, id] as const;
+// Every logical task change bumps this key atomically; compaction is state-preserving.
 const taskRevisionKey = (userId: string) =>
   ["planner", "task_revision", userId] as const;
 const taskCompletionKey = (userId: string, id: string) =>
@@ -35,11 +36,68 @@ async function entries(
   return result;
 }
 
+async function compactTaskCompletions(
+  kv: Deno.Kv,
+  userId: string,
+): Promise<void> {
+  const completionPrefix = ["planner", "task_completions", userId] as const;
+  const revisionKey = taskRevisionKey(userId);
+  for (const listed of await entries(kv, completionPrefix)) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const eventEntry = await kv.get<RecordData>(listed.key);
+      const event = eventEntry.value;
+      if (!event) break;
+      if (
+        !Array.isArray(event.ids) || typeof event.revision !== "number" ||
+        typeof event.completed_at !== "string"
+      ) break;
+      const ids = event.ids.filter((id): id is string =>
+        typeof id === "string"
+      );
+      const batch = ids.slice(0, 8);
+      const revisionEntry = await kv.get<number>(revisionKey);
+      const taskEntries = await kv.getMany(
+        batch.map((id) => key("tasks", userId, id)),
+      ) as Deno.KvEntryMaybe<RecordData>[];
+      let transaction = kv.atomic().check(
+        { key: eventEntry.key, versionstamp: eventEntry.versionstamp },
+        { key: revisionKey, versionstamp: revisionEntry.versionstamp },
+        ...taskEntries.map((entry) => ({
+          key: entry.key,
+          versionstamp: entry.versionstamp,
+        })),
+      );
+      for (let index = 0; index < batch.length; index++) {
+        const task = taskEntries[index].value;
+        if (task && Number(task.task_revision ?? 0) < event.revision) {
+          transaction = transaction.set(taskEntries[index].key, {
+            ...task,
+            status: "done",
+            completed_at: event.completed_at,
+            updated_at: event.completed_at,
+            task_revision: event.revision,
+          });
+        }
+      }
+      const remaining = ids.slice(batch.length);
+      transaction = remaining.length
+        ? transaction.set(eventEntry.key, { ...event, ids: remaining })
+        : transaction.delete(eventEntry.key);
+      if ((await transaction.commit()).ok) {
+        if (!remaining.length) break;
+      }
+    }
+  }
+}
+
 async function effectiveTasks(
   kv: Deno.Kv,
   userId: string,
-  tasks: RecordData[],
 ): Promise<RecordData[]> {
+  await compactTaskCompletions(kv, userId);
+  const tasks = (await entries(kv, ["planner", "tasks", userId])).map((
+    entry,
+  ) => entry.value);
   const completions = await entries(
     kv,
     ["planner", "task_completions", userId],
@@ -160,14 +218,12 @@ export class Database {
         }
         return result;
       })()
+      : table === "tasks"
+      ? await effectiveTasks(this.kv, this.userId)
       : (await entries(this.kv, ["planner", table, this.userId])).map((
         entry,
       ) => entry.value);
-    let result = ordered(
-      table === "tasks"
-        ? await effectiveTasks(this.kv, this.userId, rows)
-        : rows,
-    );
+    let result = ordered(rows);
     if (columns !== "*") {
       const selected = columns.split(",");
       result = result.map((row) =>
@@ -240,11 +296,16 @@ export class Database {
 
   async owned(table: "tasks" | "reminders", id: unknown): Promise<RecordData> {
     const rowId = uuid(id);
+    if (table === "tasks") {
+      const task = (await effectiveTasks(this.kv, this.userId)).find((row) =>
+        row.id === rowId
+      );
+      if (!task) throw new InputError("Record not found in your account");
+      return task;
+    }
     const entry = await this.kv.get<RecordData>(key(table, this.userId, rowId));
     if (!entry.value) throw new InputError("Record not found in your account");
-    return table === "tasks"
-      ? (await effectiveTasks(this.kv, this.userId, [entry.value]))[0]
-      : entry.value;
+    return entry.value;
   }
 
   async confirm(messageId: unknown, cancel: boolean): Promise<boolean> {
@@ -299,11 +360,7 @@ export class Database {
           this.kv,
           ["planner", "tasks", this.userId],
         );
-        const tasks = await effectiveTasks(
-          this.kv,
-          this.userId,
-          taskEntries.map((entry) => entry.value),
-        );
+        const tasks = await effectiveTasks(this.kv, this.userId);
         const taskById = new Map(
           tasks.map((task) => [String(task.id), task]),
         );
