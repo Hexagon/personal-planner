@@ -160,6 +160,9 @@ or raw provider responses are logged for measurement.
 
 - “Set my timezone to Europe/Stockholm.”
 - “Remember that I should buy milk at ICA.”
+- “I’m going to ICA. What should I pick up?” lists saved open tasks for that
+  location; “What should I do on Friday?” can list tasks due that exact date.
+  The planner won’t invent items for a shopping list.
 - “Add car service at the garage, priority 4, due Friday. Details: ask about the
   brakes and the winter tyres.” (Text after “Details:” in your own words can be
   saved as the full description.)

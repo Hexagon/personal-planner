@@ -357,6 +357,23 @@ Deno.test("lists and completions are rendered from saved records", async () => {
   const content = String(list.message.content);
   assert(content.includes("Milk") && content.includes("Router"));
   assert(!content.includes("caviar") && !content.includes("Lawn"));
+  const datedList = await run({
+    tasks: [
+      ...tasks,
+      task(4, {
+        name: "Bread",
+        location_name: "ICA",
+        due_date: "2026-01-02",
+      }),
+    ],
+    output: {
+      reply: "These groceries might help.",
+      proposal: null,
+      task_query: { location_name: "ICA", due_date: "2026-01-02" },
+    },
+  }, "I’m going to ICA tomorrow. What should I pick up?");
+  assert(String(datedList.message.content).includes("Bread"));
+  assert(!String(datedList.message.content).includes("Milk"));
   const done = await run({
     tasks,
     output: {
