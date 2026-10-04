@@ -73,18 +73,20 @@ mock the AI provider; no credentials, network access, or Docker are required.
 
 Create a Deno Deploy project from this repository, create and assign the named
 Deno KV database `planner-db`, and set `src/deploy.ts` as its entrypoint. If
-`src/main.ts` is used instead, it detects Deno Deploy and opens the same named
-database rather than the local SQLite path. Self-hosted runs continue to use the
-local `data/planner.sqlite3` database. No frontend build is required; ensure the
-deployment includes `public/`, which the server reads to serve the login and
-chat pages. Configure `AUTH_SECRET`, at least one complete OAuth client pair,
-and `APP_ORIGIN` as server-side environment variables or secrets. Set
-`OPENROUTER_API_KEY` for an optional shared server-side key; otherwise users
-provide their own in the chat UI. Personal keys are stored only in the current
-browser tab's session storage and are forwarded to OpenRouter for chat. Set
-`APP_ORIGIN` to the exact HTTPS origin and register the matching provider
-callback URL. Configure OAuth consent and provider-side rate limits. Add rate
-limiting at a trusted edge proxy/provider for the app's `/api/chat` and
+`src/main.ts` is used instead, it detects Deno Deploy via the predefined
+`DENO_DEPLOY=true` flag (or `DENO_DEPLOYMENT_ID` for compatibility) and opens
+the same named database rather than the local SQLite path. These variables are
+provided by the platform; do not set them for self-hosted runs. Self-hosted runs
+continue to use the local `data/planner.sqlite3` database. No frontend build is
+required; ensure the deployment includes `public/`, which the server reads to
+serve the login and chat pages. Configure `AUTH_SECRET`, at least one complete
+OAuth client pair, and `APP_ORIGIN` as server-side environment variables or
+secrets. Set `OPENROUTER_API_KEY` for an optional shared server-side key;
+otherwise users provide their own in the chat UI. Personal keys are stored only
+in the current browser tab's session storage and are forwarded to OpenRouter for
+chat. Set `APP_ORIGIN` to the exact HTTPS origin and register the matching
+provider callback URL. Configure OAuth consent and provider-side rate limits.
+Add rate limiting at a trusted edge proxy/provider for the app's `/api/chat` and
 `/api/confirm` routes, and set provider spending limits for OpenRouter.
 
 The deploy entrypoint registers a native `Deno.cron` job that polls a bounded

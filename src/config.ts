@@ -21,6 +21,13 @@ export function isAvailableModel(
     availableModels.some((model) => model.id === value);
 }
 
+export function isDenoDeploy(
+  getEnv: (name: string) => string | undefined = (name) => Deno.env.get(name),
+): boolean {
+  return getEnv("DENO_DEPLOY") === "true" ||
+    getEnv("DENO_DEPLOYMENT_ID") !== undefined;
+}
+
 export function loadConfig(): Config {
   const required = (name: string) => {
     const value = Deno.env.get(name);

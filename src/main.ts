@@ -1,9 +1,9 @@
 import { createHandler } from "./app.ts";
-import { loadConfig } from "./config.ts";
+import { isDenoDeploy, loadConfig } from "./config.ts";
 import { runSchedulerTick, startScheduler } from "./scheduler.ts";
 
 const config = loadConfig();
-const isDeploy = Deno.env.get("DENO_DEPLOYMENT_ID") !== undefined;
+const isDeploy = isDenoDeploy();
 if (!isDeploy) {
   await Deno.mkdir("./data", { recursive: true, mode: 0o700 });
   if (Deno.build.os !== "windows") await Deno.chmod("./data", 0o700);
