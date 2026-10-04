@@ -176,12 +176,19 @@
               aria-controls="composer-details"
               aria-label="Expand message composer"
               title="Expand message composer">⤢</button>
-            <button id="send" type="submit">Send ↑</button>
-          </div>
-          <div class="composer-tools">
-            <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
+            <button id="send" class="icon-button" type="submit"
+              aria-label="Send message" title="Send message">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7"></path>
+              </svg>
+            </button>
           </div>
           <div id="composer-details">
+            <div class="composer-tools">
+              <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
+            </div>
             <p id="send-status" role="status" aria-live="polite"
               aria-atomic="true" hidden></p>
             <details id="send-error" hidden>
