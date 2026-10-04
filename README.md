@@ -48,8 +48,10 @@ family's context; there is no cross-account household sharing.
    sign-ins must use the same provider. Enter a personal OpenRouter key in chat
    to use it for the current browser tab. It is held in tab session storage and
    sent through the app to OpenRouter, but is not saved to the planner account.
-   OpenRouter usage is billed to the account for the key used. Use
-   `deno task dev` during development. Self-hosted deployments need a
+   The key-entry box hides once you save a personal key, including after a
+   refresh in the same tab. Use **Change key** to replace it or **Clear my key**
+   to show setup again. OpenRouter usage is billed to the account for the key
+   used. Use `deno task dev` during development. Self-hosted deployments need a
    continuously running process for Croner reminders; for Deno Deploy, follow
    the deployment instructions below.
 
@@ -106,6 +108,14 @@ separate from HTTP traffic, so reminder delivery does not depend on an
 always-running server.
 
 ## Try it in chat
+
+Chat shows your message and a thinking indicator while waiting for a reply.
+Press Enter to send or Shift + Enter for a new line. Suggestions only fill the
+draft; they do not send it or bypass AI consent. Failed sends keep your draft.
+Use **Refresh chat** and review the conversation before resending, since a
+connection error does not mean the server did not receive the message. A
+received reply is shown even if refreshing the rest of the history fails. Task
+and schedule proposals still require their inline confirmation buttons.
 
 - “Set my timezone to Europe/Stockholm.”
 - “Remember that I should buy milk at ICA.”
