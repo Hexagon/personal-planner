@@ -18,7 +18,7 @@ Deno.test("history refresh backfills gaps and preserves older-page progress", as
     true,
     "before-106",
     loaded,
-    async (cursor: string) => {
+    (cursor: string) => {
       requestedCursor = cursor;
       return { messages: messages(126, 225), cursor: "before-126" };
     },
@@ -35,7 +35,7 @@ Deno.test("history refresh retains an exhausted cursor when latest messages are 
     true,
     null,
     new Set(messages(1, 100).map((message) => message.id)),
-    async () => {
+    () => {
       requested = true;
       return { messages: [], cursor: null };
     },
