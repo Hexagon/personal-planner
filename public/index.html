@@ -15,6 +15,26 @@
         </div>
         <div class="header-actions">
           <span id="preview-badge" class="preview-badge" hidden>Preview</span>
+          <details id="upcoming" hidden>
+            <summary aria-label="Upcoming reminders and due tasks"
+              title="Upcoming reminders and due tasks">
+              <span aria-hidden="true">⏰</span>
+              <span id="upcoming-badge" aria-hidden="true" hidden></span>
+            </summary>
+            <div class="upcoming-panel">
+              <div class="pane-heading">
+                <h2>Coming up</h2>
+                <button id="close-upcoming" class="secondary" type="button"
+                  aria-label="Close upcoming">✕</button>
+              </div>
+              <p id="upcoming-status" class="hint" role="status">Loading…</p>
+              <div id="upcoming-list"></div>
+              <p class="hint">Saved tasks and each reminder’s next occurrence.
+                Make changes in chat; nothing here changes your planner.</p>
+              <button id="refresh-upcoming" class="secondary"
+                type="button">Refresh</button>
+            </div>
+          </details>
           <details id="settings" hidden>
             <summary aria-label="Settings" title="Settings"><span
               aria-hidden="true">⚙</span></summary>
@@ -77,6 +97,16 @@
         <div id="auth-providers"></div>
       </section>
       <section id="chat" hidden>
+        <aside id="upcoming-pane" aria-label="Needs attention" hidden>
+          <div class="pane-heading">
+            <strong>On your radar</strong>
+            <button id="hide-upcoming-pane" class="secondary" type="button"
+              aria-label="Hide on your radar for this session">✕</button>
+          </div>
+          <ul id="upcoming-preview" class="upcoming-items"></ul>
+          <button id="show-upcoming" class="secondary"
+            type="button">See all upcoming</button>
+        </aside>
         <div id="empty-chat">
           <span class="welcome-mark" aria-hidden="true">✦</span>
           <h2>What’s on your mind today?</h2>

@@ -51,6 +51,22 @@ Reminders use five-field cron schedules and IANA timezones. They appear in chat,
 not as email or push notifications. Scheduled work only posts the reminder; it
 does not invoke AI or change tasks unattended.
 
+The **alarm icon** beside Settings opens all saved active reminders (their next
+occurrence) and open tasks with due dates, grouped into Overdue, Today,
+Tomorrow, and Later. Task dates and groups use your saved timezone (UTC until
+set); reminder times show their own saved timezone. Completed/cancelled tasks,
+undated tasks, disabled reminders, and unconfirmed proposals are not shown.
+
+A compact **On your radar** pane stays above chat when tasks are overdue or due
+today, or reminders are awaiting delivery or coming within 24 hours. It shows up
+to three items, earliest first, with task priority breaking same-date ties. Hide
+it for the current signed-in page session with **✕**; the alarm icon remains
+available. With nothing near-term, the pane stays hidden. Items refresh with
+chat every 30 seconds while the page is visible, after confirmations, and when
+opening the alarm menu; **Refresh** retries loading failures. This read-only
+view needs no AI consent or provider request. Use chat and inline confirmation
+for changes.
+
 ## Privacy and limits
 
 - The server scopes saved data to the verified signed-in account. Model and
