@@ -16,6 +16,8 @@ const key = (table: Table, userId: string, id: string) =>
   ["planner", table, userId, id] as const;
 const taskRevisionKey = (userId: string) =>
   ["planner", "task_revision", userId] as const;
+const taskCompletionKey = (userId: string, id: string) =>
+  ["planner", "task_completions", userId, id] as const;
 const messageDateKey = (userId: string, createdAt: string, id: string) =>
   ["planner", "message_dates", userId, createdAt, id] as const;
 const dueKey = (nextRun: string, userId: string, id: string) =>
@@ -31,6 +33,46 @@ async function entries(
     result.push(entry);
   }
   return result;
+}
+
+async function effectiveTasks(
+  kv: Deno.Kv,
+  userId: string,
+  tasks: RecordData[],
+): Promise<RecordData[]> {
+  const completions = await entries(
+    kv,
+    ["planner", "task_completions", userId],
+  );
+  const latest = new Map<string, { revision: number; completedAt: string }>();
+  for (const { value } of completions) {
+    if (
+      !Array.isArray(value.ids) || typeof value.revision !== "number" ||
+      typeof value.completed_at !== "string"
+    ) continue;
+    for (const id of value.ids) {
+      if (typeof id !== "string") continue;
+      const completion = latest.get(id);
+      if (!completion || value.revision > completion.revision) {
+        latest.set(id, {
+          revision: value.revision,
+          completedAt: value.completed_at,
+        });
+      }
+    }
+  }
+  return tasks.map((task) => {
+    const completion = latest.get(String(task.id));
+    if (completion && completion.revision > Number(task.task_revision ?? 0)) {
+      return {
+        ...task,
+        status: "done",
+        completed_at: completion.completedAt,
+        updated_at: completion.completedAt,
+      };
+    }
+    return task;
+  });
 }
 
 function ordered(rows: RecordData[]): RecordData[] {
@@ -121,7 +163,11 @@ export class Database {
       : (await entries(this.kv, ["planner", table, this.userId])).map((
         entry,
       ) => entry.value);
-    let result = ordered(rows);
+    let result = ordered(
+      table === "tasks"
+        ? await effectiveTasks(this.kv, this.userId, rows)
+        : rows,
+    );
     if (columns !== "*") {
       const selected = columns.split(",");
       result = result.map((row) =>
@@ -196,7 +242,9 @@ export class Database {
     const rowId = uuid(id);
     const entry = await this.kv.get<RecordData>(key(table, this.userId, rowId));
     if (!entry.value) throw new InputError("Record not found in your account");
-    return entry.value;
+    return table === "tasks"
+      ? (await effectiveTasks(this.kv, this.userId, [entry.value]))[0]
+      : entry.value;
   }
 
   async confirm(messageId: unknown, cancel: boolean): Promise<boolean> {
@@ -251,7 +299,14 @@ export class Database {
           this.kv,
           ["planner", "tasks", this.userId],
         );
-        const tasks = taskEntries.map((entry) => entry.value);
+        const tasks = await effectiveTasks(
+          this.kv,
+          this.userId,
+          taskEntries.map((entry) => entry.value),
+        );
+        const taskById = new Map(
+          tasks.map((task) => [String(task.id), task]),
+        );
         const taskEntryById = new Map(
           taskEntries.map((entry) => [String(entry.value.id), entry]),
         );
@@ -277,6 +332,7 @@ export class Database {
             created_at: timestamp,
             updated_at: timestamp,
             completed_at: null,
+            task_revision: taskRevision,
           };
           const newTaskKey = key("tasks", this.userId, String(task.id));
           checks.push({ key: newTaskKey, versionstamp: null });
@@ -288,15 +344,11 @@ export class Database {
         } else if (
           proposal.op === "update_task" || proposal.op === "delete_task"
         ) {
-          target = taskEntryById.get(String(data.id))?.value;
+          target = taskById.get(String(data.id));
           const taskEntry = taskEntryById.get(String(data.id));
           if (!target || !taskEntry) {
             throw new InputError("Record not found in your account");
           }
-          checks.push({
-            key: taskEntry.key,
-            versionstamp: taskEntry.versionstamp,
-          });
           if (proposal.op === "delete_task") {
             writes.push({ type: "delete", key: taskEntry.key });
           } else {
@@ -316,6 +368,7 @@ export class Database {
               value: {
                 ...target,
                 ...data,
+                task_revision: taskRevision,
                 status,
                 updated_at: timestamp,
                 completed_at: data.status === undefined
@@ -330,25 +383,26 @@ export class Database {
           }
         } else {
           const ids = data.ids as string[];
-          const selected = ids.map((taskId) => taskEntryById.get(taskId));
+          const selected = ids.map((taskId) => taskById.get(taskId));
           if (
-            selected.some((entry) => !entry || entry.value.status !== "open")
+            selected.some((task) => !task || task.status !== "open")
           ) {
             throw new InputError("Every task must be owned and open");
           }
-          for (const entry of selected as Entry[]) {
-            checks.push({ key: entry.key, versionstamp: entry.versionstamp });
-            writes.push({
-              type: "set",
-              key: entry.key,
-              value: {
-                ...entry.value,
-                status: "done",
-                completed_at: timestamp,
-                updated_at: timestamp,
-              },
-            });
-          }
+          const completionKey = taskCompletionKey(
+            this.userId,
+            crypto.randomUUID(),
+          );
+          checks.push({ key: completionKey, versionstamp: null });
+          writes.push({
+            type: "set",
+            key: completionKey,
+            value: {
+              ids,
+              revision: taskRevision,
+              completed_at: timestamp,
+            },
+          });
         }
         writes.push({
           type: "set",
@@ -443,6 +497,8 @@ export async function dueReminders(
 ): Promise<DueReminder[]> {
   const result: DueReminder[] = [];
   const staleIndexes: Deno.KvKey[] = [];
+  const indexes: Array<{ key: Deno.KvKey; userId: string; id: string }> = [];
+  // The suffix makes the timestamp upper bound inclusive in lexicographic order.
   const end = ["planner", "due", `${before}\uffff`] as const;
   for await (
     const index of kv.list<string>({
@@ -455,24 +511,36 @@ export async function dueReminders(
       staleIndexes.push(index.key);
       continue;
     }
-    const entry = await kv.get<RecordData>(key("reminders", userId, id));
-    if (
-      entry.value?.active === true &&
-      entry.value.next_run === index.key[2]
-    ) {
-      result.push({
-        userId,
-        id,
-        row: entry.value,
-        versionstamp: entry.versionstamp!,
-      });
-    } else {
-      staleIndexes.push(index.key);
+    indexes.push({ key: index.key, userId, id });
+  }
+  for (let offset = 0; offset < indexes.length; offset += 10) {
+    const batch = indexes.slice(offset, offset + 10);
+    const reminders = await kv.getMany(
+      batch.map(({ userId, id }) => key("reminders", userId, id)),
+    ) as Deno.KvEntryMaybe<RecordData>[];
+    for (let index = 0; index < batch.length; index++) {
+      const reminder = reminders[index];
+      const dueIndex = batch[index];
+      if (
+        reminder.value?.active === true &&
+        reminder.value.next_run === dueIndex.key[2]
+      ) {
+        result.push({
+          userId: dueIndex.userId,
+          id: dueIndex.id,
+          row: reminder.value,
+          versionstamp: reminder.versionstamp!,
+        });
+      } else {
+        staleIndexes.push(dueIndex.key);
+      }
     }
   }
-  if (staleIndexes.length) {
+  for (let offset = 0; offset < staleIndexes.length; offset += 10) {
     let transaction = kv.atomic();
-    for (const index of staleIndexes) transaction = transaction.delete(index);
+    for (const index of staleIndexes.slice(offset, offset + 10)) {
+      transaction = transaction.delete(index);
+    }
     await transaction.commit();
   }
   return result;

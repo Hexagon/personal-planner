@@ -6,9 +6,16 @@ import type { Config } from "./config.ts";
 
 export class AuthError extends Error {}
 
-export function authConfig(config: Config): AuthConfig {
+function sessionCookie(config: Config) {
   const secure = new URL(config.origin).protocol === "https:";
-  const cookieName = `${secure ? "__Secure-" : ""}authjs.session-token`;
+  return {
+    secure,
+    name: `${secure ? "__Secure-" : ""}authjs.session-token`,
+  };
+}
+
+export function authConfig(config: Config): AuthConfig {
+  const { secure, name: cookieName } = sessionCookie(config);
   const providers = [];
   if (config.googleClientId && config.googleClientSecret) {
     providers.push(
@@ -90,8 +97,7 @@ export async function authenticate(
   request: Request,
   config: Config,
 ): Promise<string> {
-  const secure = new URL(config.origin).protocol === "https:";
-  const cookieName = `${secure ? "__Secure-" : ""}authjs.session-token`;
+  const { secure, name: cookieName } = sessionCookie(config);
   const headers = new Headers();
   const cookie = request.headers.get("cookie");
   if (cookie && cookie.length <= 8192) headers.set("cookie", cookie);
