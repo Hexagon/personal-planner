@@ -151,14 +151,16 @@ label {
   margin: 1rem 0;
   background: var(--surface);
 }
-#settings {
+#settings,
+#upcoming {
   position: static;
   border: 0;
   padding: 0;
   margin: 0;
   background: none;
 }
-#settings > summary {
+#settings > summary,
+#upcoming > summary {
   display: grid;
   place-items: center;
   width: 2.75rem;
@@ -170,16 +172,20 @@ label {
   font-size: 1.35rem;
   list-style: none;
 }
-#settings > summary::-webkit-details-marker {
+#settings > summary::-webkit-details-marker,
+#upcoming > summary::-webkit-details-marker {
   display: none;
 }
-#settings > summary::marker {
+#settings > summary::marker,
+#upcoming > summary::marker {
   content: "";
 }
-#settings > summary:hover {
+#settings > summary:hover,
+#upcoming > summary:hover {
   background: var(--tint);
 }
-.settings-panel {
+.settings-panel,
+.upcoming-panel {
   position: absolute;
   z-index: 2;
   top: calc(100% + .5rem);
@@ -192,6 +198,79 @@ label {
   border-radius: 1rem;
   background: var(--surface);
   box-shadow: 0 12px 36px #00000024;
+}
+#upcoming > summary {
+  position: relative;
+}
+#upcoming-badge {
+  position: absolute;
+  top: -.35rem;
+  right: -.35rem;
+  min-width: 1.25rem;
+  padding: 0 .25rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: .65rem;
+  font-weight: 700;
+}
+.pane-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.pane-heading h2 {
+  margin: .5rem 0;
+  font-size: 1.2rem;
+}
+.pane-heading button {
+  padding: .25rem .6rem;
+}
+.upcoming-panel h3 {
+  font-size: .85rem;
+  color: var(--accent);
+  margin-bottom: .5rem;
+}
+.upcoming-items {
+  list-style: none;
+  padding: 0;
+  margin: .5rem 0;
+}
+.upcoming-item {
+  display: grid;
+  gap: .1rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.upcoming-item:last-child {
+  border-bottom: 0;
+}
+.upcoming-title {
+  font-weight: 600;
+  font-size: .9rem;
+}
+#upcoming-pane {
+  position: sticky;
+  top: .75rem;
+  z-index: 1;
+  max-height: 30vh;
+  overflow: auto;
+  padding: .65rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 8px 30px #0000000d;
+}
+#upcoming-pane > button {
+  padding: .25rem .6rem;
+  font-size: .8rem;
+}
+#upcoming-preview .upcoming-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #settings .chat-toolbar {
   margin-top: .75rem;

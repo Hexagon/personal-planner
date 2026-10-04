@@ -1,4 +1,5 @@
 import { createSettings, verifyChatSession } from "./settings.js";
+import { createUpcoming } from "./upcoming.js";
 
 const element = (id) => document.getElementById(id);
 const notice = (message, tone = "info") => {
@@ -25,6 +26,7 @@ for (const model of config.models) {
 }
 element("model").value = config.model;
 let session = null;
+const upcoming = createUpcoming({ api, getOwner: () => session?.user.id });
 let busy = false;
 const settings = createSettings({
   models: config.models.map((model) => model.id),
@@ -101,6 +103,7 @@ function setSession(value) {
   element("settings").hidden = !session;
   element("logout").hidden = !session;
   if (previousOwner !== session?.user.id) {
+    upcoming.reset();
     element("openrouter-key").value = "";
     updateKeyStatus();
     element("messages").replaceChildren();
@@ -287,10 +290,12 @@ function render(messages) {
   element("empty-chat").hidden = renderedMessages.size > 0 || !!pendingUser;
 }
 async function refresh() {
+  const upcomingRefresh = upcoming.refresh();
   const messages = await api("/api/messages");
   pendingUser?.remove();
   pendingUser = null;
   render(messages);
+  await upcomingRefresh;
 }
 element("refresh-chat").onclick = () =>
   action(async () => {

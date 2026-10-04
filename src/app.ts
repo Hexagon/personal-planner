@@ -7,6 +7,7 @@ import {
 import { authenticate, AuthError, handleAuth } from "./auth.ts";
 import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
+import { upcoming } from "./upcoming.ts";
 import { InputError, object, text } from "./validation.ts";
 
 export function isPreviewDeployment(
@@ -35,6 +36,7 @@ export function createHandler(
     "/": ["index.html", "text/html; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/settings.js": ["settings.js", "text/javascript; charset=utf-8"],
+    "/upcoming.js": ["upcoming.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
   };
   const headers = {
@@ -94,10 +96,16 @@ export function createHandler(
           ],
         });
       }
-      if (!["/api/messages", "/api/chat", "/api/confirm"].includes(path)) {
+      if (
+        !["/api/messages", "/api/upcoming", "/api/chat", "/api/confirm"]
+          .includes(path)
+      ) {
         return json({ error: "Not found" }, 404);
       }
-      if (request.method !== (path === "/api/messages" ? "GET" : "POST")) {
+      if (
+        request.method !==
+          (["/api/messages", "/api/upcoming"].includes(path) ? "GET" : "POST")
+      ) {
         return json({ error: "Method not allowed" }, 405);
       }
       if (
@@ -106,6 +114,12 @@ export function createHandler(
       ) return json({ error: "Origin not allowed" }, 403);
       const userId = await authenticate(request, config);
       const db = new Database(kv, userId);
+      if (path === "/api/upcoming") {
+        if (new URL(request.url).searchParams.size) {
+          throw new InputError("Upcoming does not accept query parameters");
+        }
+        return json(await upcoming(db));
+      }
       if (path === "/api/messages") {
         const params = new URL(request.url).searchParams;
         if (params.size) {
