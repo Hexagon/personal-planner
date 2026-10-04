@@ -19,4 +19,5 @@ deno task check
 ```
 
 Tests use in-memory Deno KV and mocked AI responses, so no credentials or paid
-provider requests are needed.
+provider requests are needed. Manually exercise any changed request paths;
+OAuth and live OpenRouter integration require your own credentials.
