@@ -64,8 +64,13 @@ export async function chat(
   input: unknown,
   model = config.model,
   onlineSearch = false,
+  userKey?: string,
 ) {
   const content = text(input, 4000);
+  const apiKey = userKey ?? config.openrouterKey;
+  if (!apiKey) {
+    throw new InputError("Add an OpenRouter API key to continue");
+  }
   await db.ensureProfile();
   const [profiles, tasks, reminders, history] = await Promise.all([
     db.list("profiles"),
@@ -113,7 +118,7 @@ export async function chat(
     {
       method: "POST",
       headers: {
-        Authorization: ["Bearer", config.openrouterKey].join(" "),
+        Authorization: ["Bearer", apiKey].join(" "),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

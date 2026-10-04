@@ -7,8 +7,9 @@ family's context; there is no cross-account household sharing.
 
 ## Setup
 
-1. Install [Deno 2](https://deno.com/) and get an
-   [OpenRouter](https://openrouter.ai/) API key.
+1. Install [Deno 2](https://deno.com/). Optionally get an
+   [OpenRouter](https://openrouter.ai/) API key for a shared app key, or let
+   users bring their own after signing in.
 2. Create a Google OAuth client, a GitHub OAuth app, or both. Set the authorized
    callback URL to `<APP_ORIGIN>/auth/callback/google` and/or
    `<APP_ORIGIN>/auth/callback/github` (locally, `http://localhost:8000`).
@@ -26,7 +27,9 @@ family's context; there is no cross-account household sharing.
    - `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`: set both to enable GitHub
      sign-in; leave both empty to disable it. At least one provider pair is
      required.
-   - `OPENROUTER_API_KEY`: server-only API key.
+   - `OPENROUTER_API_KEY`: optional server-only shared key. Without it, each
+     user must enter their own OpenRouter key after signing in. Users can also
+     override a shared key with their own.
    - `OPENROUTER_MODEL`: the default model, either `deepseek/deepseek-v4-flash`
      or `deepseek/deepseek-v4-pro` (default: Flash). The chat interface lets
      users choose between these models; availability and pricing depend on
@@ -40,7 +43,12 @@ family's context; there is no cross-account household sharing.
    deno task start
    ```
 
-   Open <http://localhost:8000> and sign in with a configured provider. Use
+   Open <http://localhost:8000> and sign in with a configured provider. The
+   first sign-in creates that provider identity's planner account; subsequent
+   sign-ins must use the same provider. Enter a personal OpenRouter key in chat
+   to use it for the current browser tab. It is held in tab session storage and
+   sent through the app to OpenRouter, but is not saved to the planner account.
+   OpenRouter usage is billed to the account for the key used. Use
    `deno task dev` during development. Self-hosted deployments need a
    continuously running process for Croner reminders; for Deno Deploy, follow
    the deployment instructions below.
@@ -49,8 +57,9 @@ The local Deno KV database is stored in `data/planner.sqlite3`; it is created
 automatically and ignored by Git. Each OAuth provider identity has its own
 planner data; Google and GitHub sign-ins are not automatically linked. Auth.js
 keeps its signed, encrypted session in an HttpOnly cookie. OAuth credentials,
-`AUTH_SECRET`, and the OpenRouter key stay server-side. Existing Supabase data
-and accounts are not imported.
+`AUTH_SECRET`, and any shared OpenRouter key stay server-side. Personal
+OpenRouter keys are not stored by the server. Existing Supabase data and
+accounts are not imported.
 
 ## Checks
 
@@ -66,10 +75,13 @@ Create a Deno Deploy project from this repository, assign it a Deno KV database,
 and set `src/deploy.ts` as its entrypoint. No frontend build is required; ensure
 the deployment includes `public/`, which the server reads to serve the login and
 chat pages. Configure `AUTH_SECRET`, at least one complete OAuth client pair,
-`OPENROUTER_API_KEY`, and `APP_ORIGIN` as server-side environment variables or
-secrets. Set `APP_ORIGIN` to the exact HTTPS origin and register the matching
-provider callback URL. Configure OAuth consent and provider-side rate limits.
-Add rate limiting at a trusted edge proxy/provider for the app's `/api/chat` and
+and `APP_ORIGIN` as server-side environment variables or secrets. Set
+`OPENROUTER_API_KEY` if you want a shared server-side key; otherwise users
+provide their own in the chat UI. Personal keys are stored only in the current
+browser tab's session storage and are forwarded to OpenRouter for chat. Set
+`APP_ORIGIN` to the exact HTTPS origin and register the matching provider
+callback URL. Configure OAuth consent and provider-side rate limits. Add rate
+limiting at a trusted edge proxy/provider for the app's `/api/chat` and
 `/api/confirm` routes, and set provider spending limits for OpenRouter.
 
 The deploy entrypoint registers a native `Deno.cron` job that polls a bounded

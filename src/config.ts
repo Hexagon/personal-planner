@@ -1,5 +1,5 @@
 export interface Config {
-  openrouterKey: string;
+  openrouterKey?: string;
   model: string;
   authSecret: string;
   googleClientId?: string;
@@ -72,7 +72,9 @@ export function loadConfig(): Config {
     throw new Error("Invalid PORT");
   }
   return {
-    openrouterKey: required("OPENROUTER_API_KEY"),
+    ...(Deno.env.get("OPENROUTER_API_KEY")
+      ? { openrouterKey: Deno.env.get("OPENROUTER_API_KEY") }
+      : {}),
     model,
     authSecret,
     ...(googleClientId && googleClientSecret
