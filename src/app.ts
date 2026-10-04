@@ -10,6 +10,11 @@ export function createHandler(config: Config, kv: Deno.Kv) {
     ...(config.googleClientId ? ["/auth/callback/google"] : []),
     ...(config.githubClientId ? ["/auth/callback/github"] : []),
   ]);
+  const formActions = [
+    "'self'",
+    ...(config.googleClientId ? ["https://accounts.google.com"] : []),
+    ...(config.githubClientId ? ["https://github.com"] : []),
+  ].join(" ");
   const files: Record<string, [string, string]> = {
     "/": ["index.html", "text/html; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
@@ -18,9 +23,9 @@ export function createHandler(config: Config, kv: Deno.Kv) {
   const headers = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
+    "Referrer-Policy": "same-origin",
     "Content-Security-Policy":
-      "default-src 'self'; connect-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      `default-src 'self'; connect-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action ${formActions}`,
   };
   const json = (value: unknown, status = 200) =>
     new Response(JSON.stringify(value), {

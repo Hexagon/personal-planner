@@ -240,6 +240,71 @@ Deno.test("public config is safe; APIs require same-origin requests and a valid 
   });
 });
 
+Deno.test("login form policy preserves same-origin sign-in without bypassing Origin or CSRF checks", async () => {
+  await withKv(async (kv) => {
+    const handler = createHandler(config, kv);
+    const readTextFile = Deno.readTextFile;
+    let page: Response;
+    Deno.readTextFile = () => Promise.resolve("<!DOCTYPE html>");
+    try {
+      page = await handler(new Request(`${config.origin}/`));
+    } finally {
+      Deno.readTextFile = readTextFile;
+    }
+    assert(page.ok);
+    assert(page.headers.get("Referrer-Policy") === "same-origin");
+    assert(
+      page.headers.get("Content-Security-Policy")?.includes(
+        "form-action 'self' https://accounts.google.com https://github.com",
+      ),
+    );
+    const csrf = await handler(new Request(`${config.origin}/auth/csrf`));
+    const { csrfToken } = await csrf.json();
+    const cookie = csrf.headers.getSetCookie().map((value) =>
+      value.split(";")[0]
+    ).join("; ");
+    const signin = (
+      origin: string | undefined,
+      token = csrfToken,
+      returnRedirect = false,
+    ) =>
+      handler(
+        new Request(`${config.origin}/auth/signin/github`, {
+          method: "POST",
+          headers: {
+            ...(origin === undefined ? {} : { Origin: origin }),
+            Cookie: cookie,
+            "Content-Type": "application/x-www-form-urlencoded",
+            ...(returnRedirect ? { "X-Auth-Return-Redirect": "1" } : {}),
+          },
+          body: new URLSearchParams({ csrfToken: token, callbackUrl: "/" }),
+        }),
+      );
+    for (const origin of [undefined, "null", "https://attacker.example"]) {
+      const rejected = await signin(origin);
+      assert(rejected.status === 403);
+      assert((await rejected.json()).error === "Origin not allowed");
+    }
+    const invalidCsrf = await signin(config.origin, "invalid-csrf-token", true);
+    assert(invalidCsrf.ok);
+    const errorUrl = new URL((await invalidCsrf.json()).url);
+    assert(errorUrl.origin === config.origin);
+    assert(errorUrl.searchParams.get("error") === "MissingCSRF");
+    const valid = await signin(config.origin);
+    assert(valid.status === 302);
+    assert(valid.headers.get("Referrer-Policy") === "same-origin");
+    const authorizeUrl = new URL(valid.headers.get("Location")!);
+    assert(authorizeUrl.origin === "https://github.com");
+    assert(authorizeUrl.pathname === "/login/oauth/authorize");
+    assert(
+      authorizeUrl.searchParams.get("redirect_uri") ===
+        `${config.origin}/auth/callback/github`,
+    );
+    assert(authorizeUrl.searchParams.has("code_challenge"));
+    assert(authorizeUrl.searchParams.get("code_challenge_method") === "S256");
+  });
+});
+
 Deno.test("BYOK is used only for chat and can replace a missing server key", async () => {
   await withKv(async (kv) => {
     const original = globalThis.fetch;
