@@ -3,7 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Family Planner</title>
+    <title>Personal Planner | Tasks and reminders in one conversation</title>
+    <meta name="description"
+      content="Plan tasks, errands, and recurring reminders in plain language. Review every change before it is saved and see what is coming up.">
+    <meta property="og:type" content="website">
+    <meta property="og:title"
+      content="Personal Planner | Tasks and reminders in one conversation">
+    <meta property="og:description"
+      content="Plan tasks, errands, and recurring reminders in plain language. Review every change before it is saved and see what is coming up.">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title"
+      content="Personal Planner | Tasks and reminders in one conversation">
+    <meta name="twitter:description"
+      content="Plan tasks, errands, and recurring reminders in plain language. Review every change before it is saved and see what is coming up.">
     <link rel="stylesheet" href="/style.css">
     <script type="module" src="/app.js"></script>
   </head>
@@ -89,12 +101,25 @@
       <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
       <section id="login">
         <p class="eyebrow">Less juggling. More living.</p>
-        <h2>Your day, in one conversation.</h2>
-        <p>Make room for what matters. Plan tasks, organize errands, and keep
-          your family moving together.</p>
+        <h2 id="landing-title">Your day, in one conversation.</h2>
+        <p>Plan tasks, organize errands, and set recurring reminders with a
+          simple chat. See what is coming up, and review every change before it
+          is saved.</p>
         <p>Sign in or create an account with a provider below. Use the same
-          provider each time; provider accounts are kept separate.</p>
+          provider each time. Your planner is personal; accounts are kept
+          separate.</p>
         <div id="auth-providers"></div>
+        <section class="landing-details" aria-labelledby="planner-benefits">
+          <h3 id="planner-benefits">A calmer way to plan your day</h3>
+          <ul>
+            <li><strong>Plan in plain language.</strong> Add tasks and errands
+              by chatting about what you need to do.</li>
+            <li><strong>Know what is next.</strong> Check upcoming due dates and
+              each reminder’s next occurrence.</li>
+            <li><strong>Stay in control.</strong> Review and confirm proposed
+              changes before they are saved.</li>
+          </ul>
+        </section>
       </section>
       <section id="chat" hidden>
         <aside id="upcoming-pane" aria-label="Needs attention" hidden>
