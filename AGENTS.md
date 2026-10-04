@@ -1,5 +1,8 @@
 # AI development guidelines
 
+- Base every change on the latest `dev` branch. Start feature branches from
+  `origin/dev` and target `dev` with pull requests; do not use another base
+  unless the task explicitly says otherwise.
 - Keep one small Deno server and a login-and-chat-only interface. Inline chat
   confirmations are part of chat; do not add management dashboards.
 - Prefer native Deno/Web APIs and focused modules. Use Auth.js for OAuth and
