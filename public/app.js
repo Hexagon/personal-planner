@@ -187,7 +187,7 @@ function render(messages) {
               const result = await api("/api/confirm", {
                 message_id: message.id,
                 cancel,
-              }, cancel ? "Cancelling proposal…" : "Confirming proposal…");
+              });
               await refresh();
               render(
                 await api(`/api/messages?id=${encodeURIComponent(message.id)}`),
@@ -203,21 +203,7 @@ function render(messages) {
                     : "Confirmation processed. See proposal status.",
                 );
               }
-              if (!pendingUser) {
-                const ordered = [...renderedMessages.values()].sort((a, b) =>
-                  a.dataset.createdAt.localeCompare(b.dataset.createdAt) ||
-                  a.dataset.messageId.localeCompare(b.dataset.messageId)
-                );
-                ordered.forEach((article, index) => {
-                  if (container.children[index] !== article) {
-                    container.insertBefore(
-                      article,
-                      container.children[index] ?? null,
-                    );
-                  }
-                });
-              }
-            });
+            }, cancel ? "Cancelling proposal…" : "Confirming proposal…");
           article.append(button);
         }
       } else {
@@ -232,6 +218,17 @@ function render(messages) {
       renderedMessages.set(message.id, article);
       container.append(article);
     }
+  }
+  if (!pendingUser) {
+    const ordered = [...renderedMessages.values()].sort((a, b) =>
+      a.dataset.createdAt.localeCompare(b.dataset.createdAt) ||
+      a.dataset.messageId.localeCompare(b.dataset.messageId)
+    );
+    ordered.forEach((article, index) => {
+      if (container.children[index] !== article) {
+        container.insertBefore(article, container.children[index] ?? null);
+      }
+    });
   }
   element("empty-chat").hidden = renderedMessages.size > 0 || !!pendingUser;
 }
