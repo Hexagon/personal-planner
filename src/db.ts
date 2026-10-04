@@ -90,18 +90,10 @@ async function compactTaskCompletions(
   }
 }
 
-async function effectiveTasks(
-  kv: Deno.Kv,
-  userId: string,
-): Promise<RecordData[]> {
-  await compactTaskCompletions(kv, userId);
-  const tasks = (await entries(kv, ["planner", "tasks", userId])).map((
-    entry,
-  ) => entry.value);
-  const completions = await entries(
-    kv,
-    ["planner", "task_completions", userId],
-  );
+function latestCompletions(
+  completions: Entry[],
+  onlyTaskId?: string,
+): Map<string, { revision: number; completedAt: string }> {
   const latest = new Map<string, { revision: number; completedAt: string }>();
   for (const { value } of completions) {
     if (
@@ -110,6 +102,7 @@ async function effectiveTasks(
     ) continue;
     for (const id of value.ids) {
       if (typeof id !== "string") continue;
+      if (onlyTaskId && id !== onlyTaskId) continue;
       const completion = latest.get(id);
       if (!completion || value.revision > completion.revision) {
         latest.set(id, {
@@ -119,18 +112,39 @@ async function effectiveTasks(
       }
     }
   }
-  return tasks.map((task) => {
-    const completion = latest.get(String(task.id));
-    if (completion && completion.revision > Number(task.task_revision ?? 0)) {
-      return {
-        ...task,
-        status: "done",
-        completed_at: completion.completedAt,
-        updated_at: completion.completedAt,
-      };
-    }
-    return task;
-  });
+  return latest;
+}
+
+function effectiveTask(
+  task: RecordData,
+  completions: Map<string, { revision: number; completedAt: string }>,
+): RecordData {
+  const completion = completions.get(String(task.id));
+  if (completion && completion.revision > Number(task.task_revision ?? 0)) {
+    return {
+      ...task,
+      status: "done",
+      completed_at: completion.completedAt,
+      updated_at: completion.completedAt,
+    };
+  }
+  return task;
+}
+
+async function effectiveTaskEntries(
+  kv: Deno.Kv,
+  userId: string,
+): Promise<Array<{ entry: Entry; row: RecordData }>> {
+  await compactTaskCompletions(kv, userId);
+  const [tasks, completions] = await Promise.all([
+    entries(kv, ["planner", "tasks", userId]),
+    entries(kv, ["planner", "task_completions", userId]),
+  ]);
+  const latest = latestCompletions(completions);
+  return tasks.map((entry) => ({
+    entry,
+    row: effectiveTask(entry.value, latest),
+  }));
 }
 
 function ordered(rows: RecordData[]): RecordData[] {
@@ -219,7 +233,7 @@ export class Database {
         return result;
       })()
       : table === "tasks"
-      ? await effectiveTasks(this.kv, this.userId)
+      ? (await effectiveTaskEntries(this.kv, this.userId)).map(({ row }) => row)
       : (await entries(this.kv, ["planner", table, this.userId])).map((
         entry,
       ) => entry.value);
@@ -296,15 +310,18 @@ export class Database {
 
   async owned(table: "tasks" | "reminders", id: unknown): Promise<RecordData> {
     const rowId = uuid(id);
-    if (table === "tasks") {
-      const task = (await effectiveTasks(this.kv, this.userId)).find((row) =>
-        row.id === rowId
-      );
-      if (!task) throw new InputError("Record not found in your account");
-      return task;
-    }
     const entry = await this.kv.get<RecordData>(key(table, this.userId, rowId));
     if (!entry.value) throw new InputError("Record not found in your account");
+    if (table === "tasks") {
+      const completions = await entries(
+        this.kv,
+        ["planner", "task_completions", this.userId],
+      );
+      return effectiveTask(
+        entry.value,
+        latestCompletions(completions, rowId),
+      );
+    }
     return entry.value;
   }
 
@@ -356,16 +373,16 @@ export class Database {
           key: revisionKey,
           versionstamp: revisionEntry.versionstamp,
         });
-        const taskEntries = await entries(
+        const taskSnapshots = await effectiveTaskEntries(
           this.kv,
-          ["planner", "tasks", this.userId],
+          this.userId,
         );
-        const tasks = await effectiveTasks(this.kv, this.userId);
+        const tasks = taskSnapshots.map(({ row }) => row);
         const taskById = new Map(
           tasks.map((task) => [String(task.id), task]),
         );
         const taskEntryById = new Map(
-          taskEntries.map((entry) => [String(entry.value.id), entry]),
+          taskSnapshots.map(({ entry, row }) => [String(row.id), entry]),
         );
         if (proposal.op === "add_task") {
           if (
