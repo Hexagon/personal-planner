@@ -316,7 +316,9 @@ function renderMarkdown(parent, value) {
       const quote = document.createElement("blockquote");
       const paragraph = document.createElement("p");
       while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
-        if (paragraph.hasChildNodes()) paragraph.append(document.createElement("br"));
+        if (paragraph.hasChildNodes()) {
+          paragraph.append(document.createElement("br"));
+        }
         renderInline(paragraph, lines[index++].replace(/^\s*>\s?/, ""));
       }
       quote.append(paragraph);
