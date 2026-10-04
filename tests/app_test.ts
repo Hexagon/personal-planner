@@ -803,10 +803,7 @@ Deno.test("confirmation saves an update_task location change", async () => {
   await withKv(async (kv) => {
     const db = new Database(kv, owner);
     await db.ensureProfile();
-    await kv.set(
-      ["planner", "tasks", owner, id(1)],
-      task(1, { location_name: null }),
-    );
+    await kv.set(["planner", "tasks", owner, id(1)], task(1));
     const [message] = await db.insert("messages", {
       role: "assistant",
       content: "Update task location?",
