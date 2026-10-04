@@ -83,7 +83,15 @@
               </div>
             </div>
           </details>
-          <button id="logout" class="secondary" hidden>Log out</button>
+          <button id="logout" class="secondary icon-button" type="button"
+            aria-label="Log out" title="Log out" hidden>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M10 17l5-5-5-5M15 12H3"></path>
+              <path d="M12 3h6a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-6"></path>
+            </svg>
+          </button>
         </div>
       </header>
       <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -130,24 +138,33 @@
           <button id="refresh-chat" class="secondary"
             type="button">Refresh chat</button>
         </div>
-        <form id="chat-form">
+        <form id="chat-form" class="compact">
           <label for="prompt" class="sr-only">Message</label>
-          <textarea id="prompt" maxlength="4000" rows="3"
-            placeholder="Ask anything about your day…"
-            required></textarea>
-          <div class="composer-tools">
-            <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
+          <div class="composer-input-row">
+            <textarea id="prompt" maxlength="4000" rows="1"
+              placeholder="Ask anything about your day…"
+              required></textarea>
+            <button id="composer-toggle" class="secondary composer-toggle"
+              type="button" aria-expanded="false"
+              aria-controls="composer-details"
+              aria-label="Expand message composer"
+              title="Expand message composer">⤢</button>
             <button id="send" type="submit">Send ↑</button>
           </div>
-          <p id="send-status" role="status" aria-live="polite"
-            aria-atomic="true" hidden></p>
-          <details id="send-error" hidden>
-            <summary>What went wrong?</summary>
-            <p id="send-error-details"></p>
-          </details>
-          <p id="timing" class="hint" role="status" hidden></p>
-          <p
-            class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
+          <div class="composer-tools">
+            <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
+          </div>
+          <div id="composer-details">
+            <p id="send-status" role="status" aria-live="polite"
+              aria-atomic="true" hidden></p>
+            <details id="send-error" hidden>
+              <summary>What went wrong?</summary>
+              <p id="send-error-details"></p>
+            </details>
+            <p id="timing" class="hint" role="status" hidden></p>
+            <p
+              class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
+          </div>
         </form>
         <p
           class="hint">All task and schedule changes need an inline confirmation.</p>

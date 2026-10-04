@@ -90,6 +90,18 @@ button.secondary {
   color: var(--muted);
   border-color: var(--line);
 }
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: .5rem;
+  border-radius: 50%;
+}
+.icon-button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
 button:disabled {
   opacity: .55;
   cursor: not-allowed;
@@ -411,11 +423,32 @@ dd {
   padding: .75rem;
   box-shadow: 0 8px 30px #0000000d;
 }
-textarea {
+.composer-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: .5rem;
+}
+.composer-input-row textarea {
+  flex: 1;
+  min-width: 0;
   resize: vertical;
   min-height: 80px;
   max-height: 240px;
   border: 0;
+}
+.composer-toggle {
+  flex: 0 0 auto;
+  padding: .5rem .75rem;
+}
+#chat-form.compact .composer-input-row textarea {
+  height: 2.9rem;
+  min-height: 2.9rem;
+  max-height: 2.9rem;
+  padding: .45rem .7rem;
+  resize: none;
+}
+#chat-form.compact #composer-details {
+  display: none;
 }
 .composer-tools {
   justify-content: space-between;
@@ -505,5 +538,11 @@ textarea {
   }
   .composer-tools .hint {
     display: none;
+  }
+  .composer-input-row {
+    gap: .35rem;
+  }
+  .composer-input-row button {
+    padding: .5rem .65rem;
   }
 }
