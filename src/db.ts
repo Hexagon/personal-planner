@@ -733,6 +733,7 @@ export class Database {
           next_run: data.next_run,
           active: true,
           created_at: timestamp,
+          updated_at: timestamp,
         };
         const reminderKey = key("reminders", this.userId, reminderId);
         checks.push({ key: reminderKey, versionstamp: null });

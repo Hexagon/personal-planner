@@ -1083,7 +1083,7 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
           description: "Plan",
           cron: "0 9 * * *",
           timezone: "UTC",
-          next_run: new Date().toISOString(),
+          next_run: "1900-01-01T00:00:00.000Z",
         },
       },
     });
@@ -1093,7 +1093,8 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
       savedReminder.description === "Plan" &&
         savedReminder.cron === "0 9 * * *" &&
         savedReminder.timezone === "UTC" &&
-        typeof savedReminder.next_run === "string" &&
+        Date.parse(String(savedReminder.next_run)) > Date.now() &&
+        typeof savedReminder.updated_at === "string" &&
         savedReminder.active === true,
       "Confirmation must save the proposed reminder schedule",
     );
