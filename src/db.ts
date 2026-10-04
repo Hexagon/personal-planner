@@ -244,8 +244,8 @@ export class Database {
     readonly userId: string,
   ) {}
 
-  // Scan one bounded date-index page, including older pending cards on demand.
-  async messagePage(cursor?: unknown, pendingOnly = false) {
+  // Scan one bounded date-index page for conversation history.
+  async messagePage(cursor?: unknown) {
     const prefix = ["planner", "message_dates", this.userId] as const;
     let end: Deno.KvKey | undefined;
     if (cursor !== undefined && cursor !== null) {
@@ -284,11 +284,7 @@ export class Database {
         ),
       ) as Deno.KvEntryMaybe<RecordData>[];
       for (const row of rows) {
-        if (
-          row.value && (!pendingOnly || row.value.action_state === "pending")
-        ) {
-          messages.push(row.value);
-        }
+        if (row.value) messages.push(row.value);
       }
     }
     const last = page.at(-1);

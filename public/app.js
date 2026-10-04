@@ -35,7 +35,6 @@ const settings = createSettings({
 });
 let openrouterKey = "";
 const renderedMessages = new Map();
-let pendingCursor = null;
 let pendingUser = null;
 let historyCursor = null;
 let historyInitialized = false;
@@ -125,7 +124,6 @@ function setSession(value) {
     updateKeyStatus();
     element("messages").replaceChildren();
     renderedMessages.clear();
-    pendingCursor = null;
     pendingUser = null;
     historyCursor = null;
     historyInitialized = false;
@@ -440,6 +438,19 @@ function render(messages) {
   }
   element("empty-chat").hidden = renderedMessages.size > 0 || !!pendingUser;
 }
+function expirePendingProposalCards() {
+  for (const article of renderedMessages.values()) {
+    if (article.dataset.actionState !== "pending") continue;
+    article.replaceChildren();
+    const heading = document.createElement("strong");
+    heading.textContent = "Planner";
+    const content = document.createElement("p");
+    content.textContent =
+      "This proposal is no longer available. Ask again if it is still needed.";
+    article.append(heading, content);
+    article.dataset.actionState = "expired";
+  }
+}
 async function refresh() {
   const upcomingRefresh = upcoming.refresh();
   const page = await api("/api/messages?history=true");
@@ -488,19 +499,6 @@ element("refresh-chat").onclick = () =>
     sendStatus("");
     notice("Chat is up to date. Review the conversation before resending.");
   }, "Refreshing chat…");
-element("older-pending").onclick = () =>
-  action(async () => {
-    const params = new URLSearchParams({ pending: "true" });
-    if (pendingCursor) params.set("cursor", pendingCursor);
-    const page = await api(`/api/messages?${params}`);
-    render(page.messages);
-    pendingCursor = page.cursor;
-    notice(
-      page.cursor
-        ? "Page checked. Click again to find older pending proposals."
-        : "All history checked. Click again to recheck from the latest page.",
-    );
-  });
 function updateBusy(value) {
   busy = value;
   for (
@@ -667,6 +665,7 @@ element("chat-form").onsubmit = (event) => {
       element("key-setup").hidden = false;
       throw new Error("Add your OpenRouter API key to start chatting.");
     }
+    expirePendingProposalCards();
     pendingUser?.remove();
     pendingUser = temporaryMessage("user", content);
     const thinking = temporaryMessage("assistant", "Thinking", "thinking");
@@ -703,12 +702,11 @@ element("chat-form").onsubmit = (event) => {
       received = true;
       thinking.remove();
       render([message]);
-      render(message.related_messages ?? []);
-      pendingCursor = message.pending_cursor;
       element("prompt").value = "";
       element("online-search").checked = false;
       try {
         await refresh();
+        render([message]);
         sendStatus(
           "Reply received. Any proposed changes still need your confirmation.",
         );

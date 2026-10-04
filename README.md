@@ -37,7 +37,9 @@ Accept the AI data notice in **Settings** before sending a message. Ask in plain
 language to create, update, complete, cancel, or delete tasks; set preferences;
 or create reminders. Review each structured proposal and choose **Confirm** or
 **Cancel**. Mutations are never applied before confirmation. Ambiguous task or
-reminder references need clarification.
+reminder references need clarification. Proposal cards are available only with
+the reply that created them. If you skip one or lose it from the current chat
+view, ask again rather than retrieving an older proposal.
 
 Tasks have a name, AI-written short description, optional user-written full
 description and location, priority (1–5), optional due date, status, and
@@ -86,9 +88,10 @@ for changes.
 - Before each chat request, open tasks are sent as compact rows. Full task
   descriptions are never read into AI context; “Show details of …” reads them
   directly from storage. Recent chat text is still part of AI context.
-- With consent, chat, preferences, reminder summaries, recent proposal states,
-  and compact open-task rows are sent through OpenRouter to its model provider.
-  Optional online search is off by default. Do not put secrets in chat.
+- With consent, chat, preferences, reminder summaries, and compact open-task
+  rows are sent through OpenRouter to its model provider. Historical proposals
+  are not included in model context. Optional online search is off by default.
+  Do not put secrets in chat.
 - Personal OpenRouter keys are forwarded to OpenRouter but never saved by the
   server. They use account-scoped tab storage by default; remembering a key on
   the device is an explicit opt-in and is not recommended on shared devices.

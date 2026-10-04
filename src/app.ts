@@ -10,6 +10,18 @@ import { chat } from "./chat.ts";
 import { upcoming } from "./upcoming.ts";
 import { InputError, object, text } from "./validation.ts";
 
+function withoutProposalHistory(message: Record<string, unknown>) {
+  return message.proposal
+    ? {
+      ...message,
+      content:
+        "A previous proposal is no longer available. Ask again if it is still needed.",
+      proposal: null,
+      action_state: null,
+    }
+    : message;
+}
+
 export function isPreviewDeployment(
   isDenoDeploy: boolean,
   appEnvironment: string | undefined,
@@ -140,21 +152,16 @@ export function createHandler(
               )
             ) throw new InputError("Invalid history query");
             const page = await db.messagePage(params.get("cursor"));
-            return json({ ...page, messages: page.messages.reverse() });
+            return json({
+              ...page,
+              messages: page.messages.map(withoutProposalHistory).reverse(),
+            });
           }
-          if (
-            [...params.keys()].some((name) =>
-              !["cursor", "pending"].includes(name)
-            ) ||
-            (params.has("pending") && params.get("pending") !== "true")
-          ) throw new InputError("Invalid message query");
-          const page = await db.messagePage(
-            params.get("cursor"),
-            params.get("pending") === "true",
-          );
-          return json({ ...page, messages: page.messages.reverse() });
+          throw new InputError("Invalid message query");
         }
-        return json((await db.list("messages")).reverse());
+        return json(
+          (await db.list("messages")).map(withoutProposalHistory).reverse(),
+        );
       }
       if (
         !request.headers.get("Content-Type")?.startsWith("application/json")

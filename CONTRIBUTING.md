@@ -34,8 +34,8 @@ and live OpenRouter integration require your own credentials.
       then delete it. Confirm each change and verify paused reminders do not
       appear in upcoming items or deliver.
 - [ ] Load more than 100 conversation messages, page to older messages, then
-      jump to the latest. Confirm older pending proposals still expose current
-      Confirm/Cancel state.
+      jump to the latest. Verify historical proposal cards are unavailable while
+      the immediate response still supports inline confirmation.
 - [ ] Switch signed-in accounts, revoke consent in another tab, and change
       timezone; verify chat history, browser credentials, date grouping, and
       reminder times stay scoped and correct.
