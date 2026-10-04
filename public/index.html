@@ -9,44 +9,85 @@
   </head>
   <body>
     <main>
-      <header><h1>Family Planner</h1><button id="logout" hidden>Log out</button></header>
-      <p id="notice" role="status"></p>
+      <header>
+        <div class="brand"><span class="brand-mark" aria-hidden="true">✦</span>
+          <div><h1>Family Planner</h1><p class="hint">A little clarity for every day</p></div>
+        </div>
+        <button id="logout" class="secondary" hidden>Log out</button>
+      </header>
+      <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
       <section id="login">
-        <p>Your family’s tasks and plans—in one conversation.</p>
+        <p class="eyebrow">Less juggling. More living.</p>
+        <h2>Your day, in one conversation.</h2>
+        <p>Make room for what matters. Plan tasks, organize errands, and keep
+          your family moving together.</p>
         <p>Sign in or create an account with a provider below. Use the same
           provider each time; provider accounts are kept separate.</p>
         <div id="auth-providers"></div>
       </section>
       <section id="chat" hidden>
-        <fieldset class="key-setup">
+        <div class="chat-toolbar">
+          <span id="key-status" class="hint"></span>
+          <button id="change-key" class="secondary" type="button"
+            hidden>Change key</button>
+          <button id="clear-key" class="secondary" type="button"
+            hidden>Clear my key</button>
+          <label for="model">Model</label>
+          <select id="model"></select>
+        </div>
+        <fieldset id="key-setup" class="key-setup">
           <legend>OpenRouter API key</legend>
-          <p id="key-status" class="hint"></p>
           <label for="openrouter-key">Your key (optional if the app provides
             one)</label>
           <input id="openrouter-key" type="password" autocomplete="off"
             spellcheck="false" maxlength="512">
           <button id="save-key" type="button">Use key in this tab</button>
-          <button id="clear-key" type="button">Clear my key</button>
+          <button id="cancel-key" class="secondary" type="button"
+            hidden>Keep current key</button>
           <p class="hint">Your key stays in this browser tab’s session storage
             and is sent through this app to OpenRouter when you chat. It is not
             saved to your planner account. OpenRouter usage is billed to the
             account for the key you use. Avoid sharing it in chat.</p>
         </fieldset>
-        <label
-          class="consent"><input type="checkbox" id="consent"> I agree to send my chat, saved timezone/preferences, reminder summaries, recent proposal states and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
-        <label for="model">Model</label>
-        <select id="model"></select>
+        <details class="privacy" open>
+          <summary>Before we chat · AI data notice</summary>
+          <label
+            class="consent"><input type="checkbox" id="consent"> I agree to send my chat, saved timezone/preferences, reminder summaries, recent proposal states and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
+        </details>
+        <div id="empty-chat">
+          <span class="welcome-mark" aria-hidden="true">✦</span>
+          <h2>What’s on your mind today?</h2>
+          <p class="hint">Start with a task, an errand, or a plan.</p>
+          <div class="suggestions">
+            <button class="secondary" type="button"
+              data-prompt="What’s urgent today?">What’s urgent today?</button>
+            <button class="secondary" type="button"
+              data-prompt="Help me plan my day.">Help me plan my day</button>
+            <button class="secondary" type="button"
+              data-prompt="Add groceries at ICA, due Friday.">Plan a grocery run</button>
+          </div>
+        </div>
         <div id="messages" role="log" aria-live="polite"
           aria-relevant="additions" aria-label="Conversation"></div>
-        <button id="older-pending"
-          type="button">Find older pending proposals</button>
+        <div class="history-tools">
+          <button id="older-pending" class="secondary"
+            type="button">Find older pending proposals</button>
+          <button id="refresh-chat" class="secondary"
+            type="button">Refresh chat</button>
+        </div>
         <form id="chat-form">
-          <label for="prompt">Message</label>
+          <label for="prompt" class="sr-only">Message</label>
           <textarea id="prompt" maxlength="4000" rows="3"
-            placeholder="Add groceries at ICA, due Friday. What’s urgent today?"
+            placeholder="Ask anything about your day…"
             required></textarea>
-          <label><input type="checkbox" id="online-search"> Use online search for this message (up to 3 results)</label>
-          <button id="send" type="submit">Send</button>
+          <div class="composer-tools">
+            <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
+            <button id="send" type="submit">Send ↑</button>
+          </div>
+          <p id="send-status" role="status" aria-live="polite"
+            aria-atomic="true" hidden></p>
+          <p
+            class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
         </form>
         <p
           class="hint">All task and schedule changes need an inline confirmation.</p>
