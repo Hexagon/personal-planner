@@ -214,6 +214,133 @@ function describeProposal(proposal) {
   }
   return list;
 }
+function renderInline(parent, source) {
+  const syntax =
+    /\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/g;
+  let cursor = 0;
+  for (const match of source.matchAll(syntax)) {
+    const index = match.index ?? 0;
+    parent.append(document.createTextNode(source.slice(cursor, index)));
+    if (match[1] !== undefined) {
+      let url;
+      try {
+        url = new URL(match[2], location.href);
+      } catch {
+        url = null;
+      }
+      if (url && ["http:", "https:", "mailto:"].includes(url.protocol)) {
+        const link = document.createElement("a");
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = match[1];
+        parent.append(link);
+      } else {
+        parent.append(document.createTextNode(match[0]));
+      }
+    } else {
+      const tag = match[4] !== undefined
+        ? "code"
+        : match[5] !== undefined || match[6] !== undefined
+        ? "strong"
+        : match[7] !== undefined
+        ? "del"
+        : "em";
+      const node = document.createElement(tag);
+      node.textContent = match[4] ?? match[5] ?? match[6] ?? match[7] ??
+        match[8] ?? match[9];
+      parent.append(node);
+    }
+    cursor = index + match[0].length;
+  }
+  parent.append(document.createTextNode(source.slice(cursor)));
+}
+function renderMarkdown(parent, value) {
+  const lines = String(value ?? "").split(/\r?\n/);
+  const isBlockStart = (line) =>
+    /^\s*```/.test(line) ||
+    /^#{1,6}\s+/.test(line) ||
+    /^\s*(?:[-+*]|\d+[.)])\s+/.test(line) ||
+    /^\s*>\s?/.test(line) ||
+    /^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line);
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index++;
+      continue;
+    }
+    if (/^\s*```/.test(line)) {
+      const code = [];
+      index++;
+      while (index < lines.length && !/^\s*```/.test(lines[index])) {
+        code.push(lines[index++]);
+      }
+      if (index < lines.length) index++;
+      const pre = document.createElement("pre");
+      const block = document.createElement("code");
+      block.textContent = code.join("\n");
+      pre.append(block);
+      parent.append(pre);
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (heading) {
+      const title = document.createElement(`h${heading[1].length}`);
+      renderInline(title, heading[2]);
+      parent.append(title);
+      index++;
+      continue;
+    }
+    if (/^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line)) {
+      parent.append(document.createElement("hr"));
+      index++;
+      continue;
+    }
+    const item = /^\s*([-+*]|\d+[.)])\s+(.+)$/.exec(line);
+    if (item) {
+      const ordered = /^\d/.test(item[1]);
+      const list = document.createElement(ordered ? "ol" : "ul");
+      const marker = /^\s*([-+*]|\d+[.)])\s+(.+)$/;
+      while (index < lines.length) {
+        const entry = marker.exec(lines[index]);
+        if (!entry || /^\d/.test(entry[1]) !== ordered) break;
+        const li = document.createElement("li");
+        renderInline(li, entry[2]);
+        list.append(li);
+        index++;
+      }
+      parent.append(list);
+      continue;
+    }
+    if (/^\s*>\s?/.test(line)) {
+      const quote = document.createElement("blockquote");
+      const paragraph = document.createElement("p");
+      while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+        if (paragraph.hasChildNodes()) {
+          paragraph.append(document.createElement("br"));
+        }
+        renderInline(paragraph, lines[index++].replace(/^\s*>\s?/, ""));
+      }
+      quote.append(paragraph);
+      parent.append(quote);
+      continue;
+    }
+    const paragraphLines = [line];
+    index++;
+    while (
+      index < lines.length && lines[index].trim() &&
+      !isBlockStart(lines[index])
+    ) {
+      paragraphLines.push(lines[index++]);
+    }
+    const paragraph = document.createElement("p");
+    paragraphLines.forEach((paragraphLine, lineIndex) => {
+      if (lineIndex) paragraph.append(document.createElement("br"));
+      renderInline(paragraph, paragraphLine);
+    });
+    parent.append(paragraph);
+  }
+}
 function render(messages) {
   const container = element("messages");
   for (const message of messages) {
@@ -230,8 +357,9 @@ function render(messages) {
     article.className = message.role === "user" ? "user" : "assistant";
     const heading = document.createElement("strong");
     heading.textContent = message.role === "user" ? "You" : "Planner";
-    const content = document.createElement("p");
-    content.textContent = message.content;
+    const content = document.createElement("div");
+    content.className = "message-content";
+    renderMarkdown(content, message.content);
     article.append(heading, content);
     if (message.proposal) {
       article.append(describeProposal(message.proposal));

@@ -118,6 +118,21 @@ Deno.test("reasoning uses OpenRouter controls and timing is not persisted", asyn
   }
 });
 
+Deno.test("system instructions allow Markdown in ordinary replies", async () => {
+  await run({
+    tasks: [],
+    output: { reply: "Hello", proposal: null },
+    onModel: (request) => {
+      const system = String(
+        (request.messages as RecordData[])[0].content,
+      );
+      assert(system.includes("not wrapped in Markdown"));
+      assert(system.includes("Markdown formatting in ordinary text replies"));
+      assert(system.includes("renders Markdown in chat history"));
+    },
+  }, "Hello");
+});
+
 Deno.test("invalid provider responses and transport failures never save assistant proposals", async () => {
   const original = globalThis.fetch;
   const valid = JSON.stringify({ reply: "Hello", proposal: null });
