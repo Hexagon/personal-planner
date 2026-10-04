@@ -133,7 +133,11 @@ Reopen it to change the model/key or revoke consent. Consent is versioned and
 remembered on this browser per signed-in account, independently of the key
 opt-in; a changed notice version requires acceptance again. Model and reasoning
 choices are also remembered per account. If browser storage is unavailable,
-settings work in memory but cannot be remembered reliably.
+settings work in memory but cannot be remembered reliably. Consent revocation is
+synchronized across tabs and checked again before sending; changing model
+preferences cannot restore revoked consent. Before sending, the app also
+rechecks the signed-in account and rejects stale-tab account changes without
+forwarding the previous account's key or draft.
 
 Reasoning defaults to **Off** (OpenRouter `reasoning.enabled: false`) for faster
 direct answers. **High** requests `reasoning.effort: "high"` and excludes

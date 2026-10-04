@@ -1,10 +1,53 @@
 export const CONSENT_VERSION = 1;
 const REASONING = ["off", "high", "default"];
 
+export async function verifyChatSession(
+  expectedOwner,
+  fetchSession,
+  setSession,
+) {
+  let verified;
+  try {
+    const response = await fetchSession();
+    if (!response.ok) throw new Error("Session unavailable");
+    verified = await response.json();
+    if (
+      typeof verified?.user?.id !== "string" || !verified.user.id.length
+    ) {
+      throw new Error("Session unavailable");
+    }
+  } catch {
+    setSession(null);
+    throw new Error(
+      "Could not verify your current sign-in. Sign in again before chatting. Your message was not sent.",
+    );
+  }
+  if (!expectedOwner || verified.user.id !== expectedOwner) {
+    setSession(verified);
+    throw new Error(
+      "Your signed-in account changed. Review this account's Settings and write a new message. Your message was not sent.",
+    );
+  }
+}
+
 // Failed writes/removals shadow stale storage for the lifetime of this page.
 function safeStorage(access) {
   const fallback = new Map();
   return {
+    keys() {
+      const keys = new Set(fallback.keys());
+      try {
+        const storage = access();
+        if (!storage) return { keys: [...keys], available: false };
+        for (let index = 0; index < storage.length; index++) {
+          const key = storage.key(index);
+          if (key !== null) keys.add(key);
+        }
+        return { keys: [...keys], available: true };
+      } catch {
+        return { keys: [...keys], available: false };
+      }
+    },
     isPersisted(key) {
       return !fallback.has(key);
     },
@@ -53,13 +96,38 @@ export function createSettings({
   state = defaults();
   const scoped = (kind) => `planner:v1:${kind}:${encodeURIComponent(owner)}`;
   const snapshot = () => ({ ...state });
+  function syncConsent() {
+    state.consent = false;
+    if (!owner) return false;
+    try {
+      const saved = JSON.parse(persistent.read(scoped("consent")));
+      state.consent = saved?.version === 1 &&
+        saved.consentVersion === CONSENT_VERSION && saved.accepted === true;
+    } catch {
+      // Invalid or inaccessible consent always requires opting in again.
+    }
+    return state.consent;
+  }
+  function cleanupTabKeys(verifiedOwner) {
+    const { keys, available } = temporary.keys();
+    let cleared = available;
+    const keep = verifiedOwner
+      ? `planner:v1:key:${encodeURIComponent(verifiedOwner)}`
+      : null;
+    for (const key of keys) {
+      if (key.startsWith("planner:v1:key:") && key !== keep) {
+        const removed = temporary.write(key, null);
+        cleared = removed && cleared;
+      }
+    }
+    return cleared;
+  }
   function persistPreferences() {
     if (!owner) return false;
     return persistent.write(
       scoped("settings"),
       JSON.stringify({
         version: 1,
-        consentVersion: state.consent ? CONSENT_VERSION : null,
         model: state.model,
         reasoning: state.reasoning,
       }),
@@ -75,20 +143,27 @@ export function createSettings({
   }
   return {
     snapshot,
+    syncConsent,
+    handleStorageChange(key) {
+      if (!owner || (key !== null && key !== scoped("consent"))) return false;
+      syncConsent();
+      return true;
+    },
     setOwner(id) {
       const next = typeof id === "string" && id.length ? id : null;
-      if (next === owner) return snapshot();
-      const tabClearFailed = owner
-        ? !temporary.write(scoped("key"), null)
-        : false;
+      const tabClearFailed = !cleanupTabKeys(next);
+      if (next === owner) {
+        state.tabClearFailed = tabClearFailed;
+        return snapshot();
+      }
       owner = next;
       state = defaults();
       state.tabClearFailed = tabClearFailed;
       if (!owner) return snapshot();
+      syncConsent();
       try {
         const saved = JSON.parse(persistent.read(scoped("settings")));
         if (saved?.version === 1) {
-          state.consent = saved.consentVersion === CONSENT_VERSION;
           if (models.includes(saved.model)) state.model = saved.model;
           if (REASONING.includes(saved.reasoning)) {
             state.reasoning = saved.reasoning;
@@ -115,7 +190,14 @@ export function createSettings({
     setConsent(accepted) {
       if (!owner) return false;
       state.consent = accepted === true;
-      return persistPreferences();
+      return persistent.write(
+        scoped("consent"),
+        JSON.stringify({
+          version: 1,
+          consentVersion: CONSENT_VERSION,
+          accepted: state.consent,
+        }),
+      );
     },
     setPreferences(model, reasoning) {
       if (!owner || !models.includes(model) || !REASONING.includes(reasoning)) {

@@ -1,4 +1,8 @@
-import { CONSENT_VERSION, createSettings } from "../public/settings.js";
+import {
+  CONSENT_VERSION,
+  createSettings,
+  verifyChatSession,
+} from "../public/settings.js";
 
 function assert(value: unknown, message = "Assertion failed"): asserts value {
   if (!value) throw new Error(message);
@@ -67,7 +71,9 @@ Deno.test("settings restore versioned consent, model/reasoning and a tab key on 
   assert(setup(local, tab).settings.setOwner(owner).reasoning === "default");
   const preferences = JSON.parse(local.getItem(scoped("settings"))!);
   assert(preferences.version === 1);
-  assert(preferences.consentVersion === CONSENT_VERSION);
+  assert(!("consentVersion" in preferences));
+  const consent = JSON.parse(local.getItem(scoped("consent"))!);
+  assert(consent.consentVersion === CONSENT_VERSION && consent.accepted);
   assert(!JSON.stringify(preferences).includes("credential-free-placeholder"));
 });
 
@@ -184,12 +190,12 @@ Deno.test("failed removals shadow stale credentials and consent while reporting 
   assert(!settings.clearKey());
   assert(!settings.snapshot().key);
   settings.setOwner(other);
+  assert(settings.snapshot().tabClearFailed);
   assert(!settings.setOwner(owner).key);
   local.failWrite = true;
   assert(!settings.setConsent(false));
   settings.setOwner(other);
   assert(!settings.setOwner(owner).consent);
-  assert(settings.snapshot().tabClearFailed);
 });
 
 Deno.test("blocked storage accessors do not prevent in-memory onboarding or logout", () => {
@@ -210,4 +216,142 @@ Deno.test("blocked storage accessors do not prevent in-memory onboarding or logo
   const loggedOut = settings.setOwner(null);
   assert(!loggedOut.key && !loggedOut.consent && loggedOut.tabClearFailed);
   assert(!settings.setOwner(other).key);
+});
+Deno.test("pre-send session verification rejects stale-tab account changes before reading or forwarding credentials", async () => {
+  const { settings } = setup();
+  settings.setOwner(owner);
+  settings.setConsent(true);
+  settings.saveKey("account-a-placeholder");
+  let currentOwner: string | null = owner;
+  let sent = false;
+  let readCredentials = false;
+  let draft = "account-a-draft";
+  let rejected = false;
+  try {
+    await verifyChatSession(
+      currentOwner,
+      () => Promise.resolve(Response.json({ user: { id: other } })),
+      (session: { user: { id: string } } | null) => {
+        currentOwner = session?.user.id ?? null;
+        settings.setOwner(currentOwner);
+        draft = "";
+      },
+    );
+    readCredentials = true;
+    settings.snapshot();
+    sent = true;
+  } catch {
+    rejected = true;
+  }
+  assert(rejected && !sent && !readCredentials);
+  assert(currentOwner === other && !draft);
+  assert(!settings.snapshot().key && !settings.snapshot().consent);
+});
+
+Deno.test("pre-send session verification fails closed for logout, bad responses and transport errors", async () => {
+  const fetchers = [
+    () => Promise.resolve(Response.json({})),
+    () => Promise.resolve(Response.json({ user: { id: 123 } })),
+    () => Promise.resolve(new Response("Unavailable", { status: 503 })),
+    () => Promise.resolve(new Response("Not JSON")),
+    () => Promise.reject(new Error("Connection lost")),
+  ];
+  for (const fetchSession of fetchers) {
+    const { settings } = setup();
+    settings.setOwner(owner);
+    settings.setConsent(true);
+    settings.saveKey("account-a-placeholder");
+    let sent = false;
+    let rejected = false;
+    try {
+      await verifyChatSession(owner, fetchSession, (session: null) => {
+        assert(session === null);
+        settings.setOwner(null);
+      });
+      sent = true;
+    } catch {
+      rejected = true;
+    }
+    assert(rejected && !sent);
+    assert(!settings.snapshot().key && !settings.snapshot().consent);
+  }
+});
+
+Deno.test("pre-send session verification permits only the unchanged verified owner", async () => {
+  let changed = false;
+  await verifyChatSession(
+    owner,
+    () => Promise.resolve(Response.json({ user: { id: owner } })),
+    () => {
+      changed = true;
+    },
+  );
+  assert(!changed);
+});
+
+Deno.test("another tab's preference writes cannot undo consent revocation; pre-send sync and storage events observe it", () => {
+  const local = new MemoryStorage();
+  const a = setup(local).settings;
+  a.setOwner(owner);
+  a.setConsent(true);
+  const b = setup(local).settings;
+  assert(b.setOwner(owner).consent);
+  assert(a.setConsent(false));
+  assert(b.snapshot().consent);
+  assert(b.setPreferences("model-b", "high"));
+  assert(!setup(local).settings.setOwner(owner).consent);
+  assert(!b.syncConsent());
+  assert(!b.snapshot().consent);
+  a.setConsent(true);
+  assert(b.handleStorageChange(scoped("consent")));
+  assert(b.snapshot().consent);
+  a.setConsent(false);
+  assert(!b.handleStorageChange(scoped("consent", other)));
+  assert(b.snapshot().consent);
+  assert(b.handleStorageChange(scoped("consent")));
+  assert(!b.snapshot().consent);
+  a.setConsent(true);
+  b.syncConsent();
+  local.clear();
+  assert(b.handleStorageChange(null));
+  assert(!b.snapshot().consent);
+});
+
+Deno.test("fresh-page absent or changed sessions remove previous scoped tab credentials without removing remembered keys", () => {
+  const { settings, local, tab } = setup();
+  settings.setOwner(owner);
+  settings.saveKey("remembered-placeholder", true);
+  tab.setItem(scoped("key"), "expired-tab-placeholder");
+  tab.setItem(scoped("key", other), "another-tab-placeholder");
+  const expired = setup(local, tab).settings;
+  assert(!expired.setOwner(null).key);
+  assert(tab.getItem(scoped("key")) === null);
+  assert(tab.getItem(scoped("key", other)) === null);
+  assert(local.getItem(scoped("key")) === "remembered-placeholder");
+  tab.setItem(scoped("key"), "old-owner-tab-placeholder");
+  tab.setItem(scoped("key", other), "current-owner-tab-placeholder");
+  const fresh = setup(local, tab).settings.setOwner(other);
+  assert(fresh.key === "current-owner-tab-placeholder");
+  assert(tab.getItem(scoped("key")) === null);
+  assert(tab.getItem(scoped("key", other)) === "current-owner-tab-placeholder");
+});
+
+Deno.test("invalid or unreadable dedicated consent fails closed", () => {
+  const { settings, local } = setup();
+  settings.setOwner(owner);
+  settings.setConsent(true);
+  local.setItem(
+    scoped("consent"),
+    JSON.stringify({
+      version: 1,
+      consentVersion: CONSENT_VERSION + 1,
+      accepted: true,
+    }),
+  );
+  assert(!settings.syncConsent());
+  local.setItem(scoped("consent"), "{malformed");
+  assert(!settings.syncConsent());
+  settings.setConsent(true);
+  local.failRead = true;
+  assert(!settings.syncConsent());
 });

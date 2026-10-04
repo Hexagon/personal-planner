@@ -1,4 +1,4 @@
-import { createSettings } from "./settings.js";
+import { createSettings, verifyChatSession } from "./settings.js";
 
 const element = (id) => document.getElementById(id);
 const notice = (message, tone = "info") => {
@@ -68,7 +68,9 @@ function updateOnboarding() {
 
 function setSession(value) {
   const previousOwner = session?.user.id;
-  session = value?.user?.id ? value : null;
+  session = typeof value?.user?.id === "string" && value.user.id.length
+    ? value
+    : null;
   const saved = settings.setOwner(session?.user.id);
   openrouterKey = saved.key;
   element("consent").checked = saved.consent;
@@ -422,6 +424,20 @@ function temporaryMessage(role, content, className = "") {
 element("chat-form").onsubmit = (event) => {
   event.preventDefault();
   return action(async () => {
+    await verifyChatSession(
+      session?.user.id,
+      () =>
+        fetch("/auth/session", {
+          credentials: "same-origin",
+          cache: "no-store",
+        }),
+      (current) => {
+        setSession(current);
+        element("settings").open = true;
+      },
+    );
+    element("consent").checked = settings.syncConsent();
+    if (!element("consent").checked) element("settings").open = true;
     const content = element("prompt").value.trim();
     if (!content) throw new Error("Write a message first.");
     if (!element("consent").checked) {
@@ -534,6 +550,16 @@ element("consent").onchange = () => {
     );
   }
 };
+globalThis.addEventListener("storage", (event) => {
+  if (!settings.handleStorageChange(event.key)) return;
+  element("consent").checked = settings.snapshot().consent;
+  if (!element("consent").checked) {
+    element("settings").open = true;
+    notice(
+      "AI consent was revoked in another tab. Review Settings before chatting.",
+    );
+  }
+});
 for (const id of ["model", "reasoning"]) {
   element(id).onchange = () => {
     if (
@@ -558,15 +584,18 @@ if (authError === "OAuthAccountNotLinked") {
   notice("Sign-in could not be completed. Please try again.");
 }
 try {
-  const response = await fetch("/auth/session", { credentials: "same-origin" });
-  if (response.ok) {
-    setSession(await response.json());
-    if (session) {
-      await refresh();
-      if (renderedMessages.size) scrollToLatest();
-    }
+  const response = await fetch("/auth/session", {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error("Session unavailable");
+  setSession(await response.json());
+  if (session) {
+    await refresh();
+    if (renderedMessages.size) scrollToLatest();
   }
 } catch {
+  if (!session) setSession(null);
   notice(
     "Could not load your session or chat. Refresh the page to try again.",
     "error",
