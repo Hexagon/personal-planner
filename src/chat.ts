@@ -29,6 +29,7 @@ export class ChatRequestError extends Error {
     message: string,
     readonly status: number,
     readonly category: string,
+    readonly providerStatus?: number,
   ) {
     super(message);
   }
@@ -210,9 +211,11 @@ export async function chat(
       `${reason} (HTTP ${status}). Your message is in chat history, but no reply was saved. Refresh chat before retrying.`,
       502,
       "provider_response",
+      status,
     );
   }
   let output: RecordData;
+  let reply: string;
   try {
     const result = object(await response.json());
     const choices = result.choices;
@@ -227,7 +230,25 @@ export async function chat(
       message.content.length > 32768
     ) throw new Error();
     output = object(JSON.parse(message.content));
-  } catch {
+    reply = text(output.reply, 10000);
+  } catch (error) {
+    if (
+      error instanceof DOMException &&
+      ["AbortError", "TimeoutError"].includes(error.name)
+    ) {
+      throw new ChatRequestError(
+        "The OpenRouter response timed out while being received. Your message is in chat history, but no reply was saved. Refresh chat before retrying.",
+        504,
+        "provider_timeout",
+      );
+    }
+    if (error instanceof TypeError) {
+      throw new ChatRequestError(
+        "Could not receive the OpenRouter response. Your message is in chat history, but no reply was saved. Check your connection and refresh chat before retrying.",
+        502,
+        "provider_connection",
+      );
+    }
     throw new ChatRequestError(
       "OpenRouter returned an invalid or incomplete response. Your message is in chat history, but no reply was saved. Refresh chat before retrying.",
       502,
@@ -235,7 +256,6 @@ export async function chat(
     );
   }
   const providerMs = performance.now() - providerStarted;
-  let reply = text(output.reply, 10000);
   let proposal = null;
   const queries = [
     output.proposal,

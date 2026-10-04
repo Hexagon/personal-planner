@@ -150,6 +150,9 @@ Deno.test("invalid provider responses and transport failures never save assistan
     envelope('{"reply":"unfinished'),
     envelope("[]"),
     envelope("null"),
+    envelope(JSON.stringify({ proposal: null })),
+    envelope(JSON.stringify({ reply: "", proposal: null })),
+    envelope(JSON.stringify({ reply: null, proposal: null })),
     envelope(valid, "length"),
     envelope(valid, "content_filter"),
   ];
@@ -157,11 +160,13 @@ Deno.test("invalid provider responses and transport failures never save assistan
     ...responses.map((body) => ({
       category: "provider_invalid_response",
       status: 502,
+      providerStatus: undefined,
       run: () => Promise.resolve(new Response(JSON.stringify(body))),
     })),
     {
       category: "provider_response",
       status: 502,
+      providerStatus: 429,
       run: () =>
         Promise.resolve(
           new Response("provider-private-error", { status: 429 }),
@@ -170,16 +175,49 @@ Deno.test("invalid provider responses and transport failures never save assistan
     {
       category: "provider_invalid_response",
       status: 502,
+      providerStatus: undefined,
       run: () => Promise.resolve(new Response("not-json")),
+    },
+    {
+      category: "provider_connection",
+      status: 502,
+      providerStatus: undefined,
+      run: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new TypeError("Body connection failed"));
+              },
+            }),
+          ),
+        ),
     },
     {
       category: "provider_timeout",
       status: 504,
+      providerStatus: undefined,
+      run: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new DOMException("Timed out", "TimeoutError"));
+              },
+            }),
+          ),
+        ),
+    },
+    {
+      category: "provider_timeout",
+      status: 504,
+      providerStatus: undefined,
       run: () => Promise.reject(new DOMException("Timed out", "TimeoutError")),
     },
     {
       category: "provider_connection",
       status: 502,
+      providerStatus: undefined,
       run: () => Promise.reject(new TypeError("Network unavailable")),
     },
   ];
@@ -200,6 +238,7 @@ Deno.test("invalid provider responses and transport failures never save assistan
           assert(error instanceof ChatRequestError);
           assert(error.status === failure.status);
           assert(error.category === failure.category);
+          assert(error.providerStatus === failure.providerStatus);
           assert(
             !String(error).includes("provider-private-error"),
             "Raw provider errors must not escape",
@@ -647,8 +686,6 @@ Deno.test("update/delete resolve finished tasks by user reference and clarify am
 Deno.test("saved query shapes and one-operation boundary reject malformed model output", async () => {
   for (
     const output of [
-      { reply: null },
-      { reply: "" },
       { proposal: { op: "run_sql", data: {} } },
       { proposal: { op: "add_task", data: { name: "Missing summary" } } },
       {

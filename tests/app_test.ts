@@ -622,10 +622,13 @@ Deno.test("BYOK is used only for chat and can replace a missing server key", asy
 Deno.test("chat reasoning reaches the provider and failed AI calls release the request slot", async () => {
   await withKv(async (kv) => {
     const original = globalThis.fetch;
+    const originalConsoleError = console.error;
     const handler = createHandler(config, kv);
     const cookie = await sessionCookie();
+    const failures: string[] = [];
     let fail = true;
     let expected: unknown;
+    console.error = (message?: unknown) => failures.push(String(message));
     globalThis.fetch = (_input, init) => {
       assert(
         JSON.stringify(JSON.parse(String(init?.body)).reasoning) ===
@@ -663,7 +666,13 @@ Deno.test("chat reasoning reaches the provider and failed AI calls release the r
           failure.error.includes("OpenRouter is temporarily unavailable") &&
             failure.error.includes("HTTP 503"),
         );
-        assert(/^[0-9a-f-]{36}$/i.test(failure.request_id));
+        assert(
+          /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(
+            failure.request_id,
+          ),
+        );
+        const log = JSON.parse(failures.at(-1) ?? "{}");
+        assert(log.status === 502 && log.upstream_status === 503);
         fail = false;
         const success = await handler(
           request(
@@ -685,6 +694,7 @@ Deno.test("chat reasoning reaches the provider and failed AI calls release the r
       );
     } finally {
       globalThis.fetch = original;
+      console.error = originalConsoleError;
     }
   });
 });

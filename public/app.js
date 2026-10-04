@@ -178,7 +178,7 @@ async function api(path, body) {
   }
   if (!response.ok) {
     const requestId = typeof result?.request_id === "string" &&
-        /^[0-9a-f-]{36}$/i.test(result.request_id)
+        /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(result.request_id)
       ? ` Reference ID: ${result.request_id}.`
       : "";
     const error = new Error(

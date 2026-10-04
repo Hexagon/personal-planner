@@ -254,6 +254,7 @@ export function createHandler(
             request_id: requestId,
             category: error.category,
             status: error.status,
+            upstream_status: error.providerStatus,
           }),
         );
         return json(
@@ -270,7 +271,7 @@ export function createHandler(
       );
       return json({
         error:
-          `An unexpected server error occurred. Reference ID: ${requestId}. Refresh chat before retrying.`,
+          "An unexpected server error occurred. Refresh chat before retrying.",
         request_id: requestId,
       }, 500);
     }
