@@ -341,6 +341,10 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
     });
     assert(await db.confirm(completion[0].id, false));
     assert(
+      (await db.owned("tasks", taskIds[0])).status === "done",
+      "An owned-task read must honor compactable batch completion",
+    );
+    assert(
       (await db.list("tasks")).every((row) => row.status === "done"),
       "A batch completion must update every task",
     );

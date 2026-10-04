@@ -310,6 +310,9 @@ export class Database {
 
   async owned(table: "tasks" | "reminders", id: unknown): Promise<RecordData> {
     const rowId = uuid(id);
+    if (table === "tasks") {
+      await compactTaskCompletions(this.kv, this.userId);
+    }
     const entry = await this.kv.get<RecordData>(key(table, this.userId, rowId));
     if (!entry.value) throw new InputError("Record not found in your account");
     if (table === "tasks") {
