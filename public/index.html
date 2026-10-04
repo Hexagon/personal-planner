@@ -13,7 +13,56 @@
         <div class="brand"><span class="brand-mark" aria-hidden="true">✦</span>
           <div><h1>Family Planner</h1><p class="hint">A little clarity for every day</p></div>
         </div>
-        <button id="logout" class="secondary" hidden>Log out</button>
+        <div class="header-actions">
+          <details id="settings" hidden>
+            <summary aria-label="Settings" title="Settings"><span
+              aria-hidden="true">⚙</span></summary>
+            <div class="settings-panel">
+              <div class="chat-toolbar">
+                <span id="key-status" class="hint"></span>
+                <button id="change-key" class="secondary" type="button"
+                  hidden>Change key</button>
+                <button id="clear-key" class="secondary" type="button"
+                  hidden>Clear my key</button>
+                <label for="model">Model</label>
+                <select id="model"></select>
+                <label for="reasoning">Reasoning</label>
+                <select id="reasoning">
+                  <option value="off">Off</option>
+                  <option value="high">High</option>
+                  <option value="default">Provider default</option>
+                </select>
+              </div>
+              <fieldset id="key-setup" class="key-setup">
+                <legend>OpenRouter API key</legend>
+                <label for="openrouter-key">Your key (optional if the app provides
+                one)</label>
+                <input id="openrouter-key" type="password" autocomplete="off"
+                  spellcheck="false" maxlength="512">
+                <label><input id="remember-key" type="checkbox"> Remember this key on this device</label>
+                <button id="save-key" type="button">Use key</button>
+                <button id="cancel-key" class="secondary" type="button"
+                  hidden>Keep current key</button>
+                <p
+                  class="hint">By default your key stays in this browser tab’s session storage.
+                Remembering it stores a persistent credential in this browser, accessible
+                to scripts and anyone using this browser profile. Do not remember it on
+                a shared device. It is sent through this app to OpenRouter when you chat. It is not
+                saved to your planner account. OpenRouter usage is billed to the
+                account for the key you use. Avoid sharing it in chat.</p>
+              </fieldset>
+              <div class="privacy">
+                <strong>Before we chat · AI data notice</strong>
+                <label
+                  class="consent"><input type="checkbox" id="consent"> I agree to send my chat, saved timezone/preferences, reminder summaries, recent proposal states and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
+                <p
+                  class="hint">Consent and model/reasoning preferences are remembered for
+                this signed-in account on this browser. Uncheck to revoke AI consent.</p>
+              </div>
+            </div>
+          </details>
+          <button id="logout" class="secondary" hidden>Log out</button>
+        </div>
       </header>
       <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
       <section id="login">
@@ -26,50 +75,6 @@
         <div id="auth-providers"></div>
       </section>
       <section id="chat" hidden>
-        <details id="settings" open>
-          <summary>Settings</summary>
-          <div class="chat-toolbar">
-            <span id="key-status" class="hint"></span>
-            <button id="change-key" class="secondary" type="button"
-              hidden>Change key</button>
-            <button id="clear-key" class="secondary" type="button"
-              hidden>Clear my key</button>
-            <label for="model">Model</label>
-            <select id="model"></select>
-            <label for="reasoning">Reasoning</label>
-            <select id="reasoning">
-              <option value="off">Off</option>
-              <option value="high">High</option>
-              <option value="default">Provider default</option>
-            </select>
-          </div>
-          <fieldset id="key-setup" class="key-setup">
-            <legend>OpenRouter API key</legend>
-            <label for="openrouter-key">Your key (optional if the app provides
-            one)</label>
-            <input id="openrouter-key" type="password" autocomplete="off"
-              spellcheck="false" maxlength="512">
-            <label><input id="remember-key" type="checkbox"> Remember this key on this device</label>
-            <button id="save-key" type="button">Use key</button>
-            <button id="cancel-key" class="secondary" type="button"
-              hidden>Keep current key</button>
-            <p
-              class="hint">By default your key stays in this browser tab’s session storage.
-            Remembering it stores a persistent credential in this browser, accessible
-            to scripts and anyone using this browser profile. Do not remember it on
-            a shared device. It is sent through this app to OpenRouter when you chat. It is not
-            saved to your planner account. OpenRouter usage is billed to the
-            account for the key you use. Avoid sharing it in chat.</p>
-          </fieldset>
-          <div class="privacy">
-            <strong>Before we chat · AI data notice</strong>
-            <label
-              class="consent"><input type="checkbox" id="consent"> I agree to send my chat, saved timezone/preferences, reminder summaries, recent proposal states and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
-            <p
-              class="hint">Consent and model/reasoning preferences are remembered for
-            this signed-in account on this browser. Uncheck to revoke AI consent.</p>
-          </div>
-        </details>
         <div id="empty-chat">
           <span class="welcome-mark" aria-hidden="true">✦</span>
           <h2>What’s on your mind today?</h2>
@@ -81,6 +86,8 @@
               data-prompt="Help me plan my day.">Help me plan my day</button>
             <button class="secondary" type="button"
               data-prompt="Add groceries at ICA, due Friday.">Plan a grocery run</button>
+            <button class="secondary" type="button"
+              data-prompt="I’m going to ICA. What should I pick up?">What should I pick up?</button>
           </div>
         </div>
         <div id="messages" role="log" aria-live="polite"
@@ -102,6 +109,10 @@
           </div>
           <p id="send-status" role="status" aria-live="polite"
             aria-atomic="true" hidden></p>
+          <details id="send-error" hidden>
+            <summary>What went wrong?</summary>
+            <p id="send-error-details"></p>
+          </details>
           <p id="timing" class="hint" role="status" hidden></p>
           <p
             class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
