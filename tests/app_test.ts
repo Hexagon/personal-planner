@@ -70,7 +70,7 @@ Deno.test("preview badge is limited to non-production Deno Deploy", () => {
   assert(isPreviewDeployment(true, undefined));
 });
 
-Deno.test("bounded pending pages expose old inline cards after reload without crossing owners", async () => {
+Deno.test("proposal cards are omitted from transcript history without crossing owners", async () => {
   await withKv(async (kv) => {
     const db = new Database(kv, owner);
     const other = new Database(kv, otherOwner);
@@ -111,17 +111,21 @@ Deno.test("bounded pending pages expose old inline cards after reload without cr
     const cookie = await sessionCookie();
     const get = (path: string) =>
       handler(request(path, undefined, config.origin, cookie));
-    assert(
-      !(await (await get("/api/messages")).text()).includes(String(old.id)),
-    );
-    const first = await (await get("/api/messages?pending=true")).json();
-    assert(first.messages.length === 0 && first.cursor);
-    const second = await (await get(
-      `/api/messages?pending=true&cursor=${encodeURIComponent(first.cursor)}`,
+    const latest = await (await get("/api/messages?history=true")).json();
+    const older = await (await get(
+      `/api/messages?history=true&cursor=${encodeURIComponent(latest.cursor)}`,
     )).json();
-    assert(second.messages.length === 1 && second.messages[0].id === old.id);
-    assert(second.messages[0].proposal.data.name === "Old");
-    assert(second.cursor === null);
+    const historical = older.messages.find((message: RecordData) =>
+      message.id === old.id
+    );
+    assert(historical);
+    assert(historical.proposal === null && historical.action_state === null);
+    assert(!String(historical.content).includes("Add old task?"));
+    assert(
+      (await get("/api/messages?pending=true")).status === 400,
+    );
+    const immediate = await (await get(`/api/messages?id=${old.id}`)).json();
+    assert(immediate[0].proposal.data.name === "Old");
     const confirmed = await handler(
       request(
         "/api/confirm",
@@ -138,18 +142,11 @@ Deno.test("bounded pending pages expose old inline cards after reload without cr
     const unavailable = await (await get(`/api/messages?id=${foreign.id}`))
       .json();
     assert(unavailable.length === 0);
-    assert(
-      (await get("/api/messages?pending=true&cursor=garbage")).status === 400,
-    );
     assert((await get("/api/messages?pending=false")).status === 400);
-    const page = await (await get(
-      `/api/messages?pending=true&cursor=${encodeURIComponent(first.cursor)}`,
-    )).json();
-    assert(page.messages.length === 0);
   });
 });
 
-Deno.test("conversation history pages backward, stays owner scoped, and returns live proposal state", async () => {
+Deno.test("conversation history pages backward, stays owner scoped, and omits proposals", async () => {
   await withKv(async (kv) => {
     const other = new Database(kv, otherOwner);
     for (let n = 1; n <= 205; n++) {
@@ -213,8 +210,11 @@ Deno.test("conversation history pages backward, stays owner scoped, and returns 
     )).json();
     assert(
       oldest.messages.length === 5 &&
-        oldest.messages[0].content === "Message 1" &&
-        oldest.messages[0].action_state === "confirmed" &&
+        oldest.messages[0].content.includes(
+          "previous proposal is no longer available",
+        ) &&
+        oldest.messages[0].action_state === null &&
+        oldest.messages[0].proposal === null &&
         oldest.cursor === null,
     );
     assert(

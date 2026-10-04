@@ -3,8 +3,6 @@ import type { Database } from "./db.ts";
 import { geoRole } from "./planner/geo-planner.ts";
 import { prioritize, taskRole, urgency } from "./planner/task-tracker.ts";
 import {
-  proposalLine,
-  proposalSummary,
   queryObject,
   reminderReply,
   reminderSelection,
@@ -47,8 +45,7 @@ For task lists return "task_query":{"location_name":null OR a place label,"due_d
 When the user asks what to buy, what to pick up, or what to do while going somewhere, prefer a concise checklist of existing open tasks: filter by the named place when it matches a saved location, or list all open tasks grouped by saved location when no place is given. For a specific day, use due_date; for broad time periods, use urgency only when it accurately matches. Never invent shopping items, imply unsaved items are on a saved list, or infer a new task from a question. If the intended place or date is ambiguous, ask a brief clarification. The exact task list is authoritative; prioritize it using its saved priority and due-date urgency.
 For day planning, use the open tasks' priority, urgency and location_name labels to suggest an order and grouping in your reply. Duration, cost, routes, travel time, opening hours and stock are unknown; never invent them.
 For saved settings use "settings_query":{}, proposal=null. For saved reminders use "reminder_query":{"reminder":null OR description/ID,"active":null OR boolean,"offset":0 OR next offset supplied by code}, proposal=null. Code renders authoritative saved data. Only active reminders and open tasks with due dates appear in the upcoming view.
-For pending proposals use "proposal_query":{"id":null OR proposal ID,"cursor":null OR the pagination cursor supplied by code}, proposal=null. Code renders saved confirmation status and returns usable cards. Proposal states in context are a bounded recent sample, not all pending proposals. Pending proposals are NOT saved tasks/settings/reminders. Never confirm or cancel through chat/model output; tell the user to use the inline buttons. To find older proposals ask for the next page using the exact cursor. Never infer that a missing proposal was confirmed.
-At most one proposal or query (task_query/task_detail/settings_query/reminder_query/proposal_query) per turn. Login, credentials and AI consent are handled outside this conversation; never propose changes to them.
+Proposals appear only with the reply that created them and must be confirmed with the inline buttons then. Historical proposals are unavailable; if the user asks about an older proposal, ask them to request it again. At most one proposal or query (task_query/task_detail/settings_query/reminder_query) per turn. Login, credentials and AI consent are handled outside this conversation; never propose changes to them.
 Do not provide schedules unless scheduler_enabled is true.
 `;
 
@@ -122,8 +119,6 @@ export async function chat(
       timezone: reminder.timezone,
     })),
     scheduler_enabled: true,
-    proposal_states: history.filter((message) => message.proposal)
-      .slice(0, 20).map(proposalSummary),
   };
   await db.insert("messages", { role: "user", content });
   const searchInstructions = onlineSearch
@@ -162,9 +157,10 @@ export async function chat(
           },
           ...history.slice(0, 12).reverse().map((message) => ({
             role: message.role,
-            // Detail replies contain full descriptions; keep them out of context.
-            content: message.role === "assistant" &&
-                String(message.content).startsWith(detailPrefix)
+            content: message.proposal
+              ? "[A previous proposal is no longer available. Ask again if it is still needed.]"
+              : message.role === "assistant" &&
+                  String(message.content).startsWith(detailPrefix)
               ? "[Task details were shown to the user and omitted here.]"
               : String(message.content).slice(0, 4000),
           })),
@@ -202,11 +198,13 @@ export async function chat(
     output.task_detail,
     output.settings_query,
     output.reminder_query,
-    output.proposal_query,
   ]
     .filter((value) => value != null);
   if (queries.length > 1) {
     throw new InputError("Use at most one proposal or query per message");
+  }
+  if (output.proposal_query != null) {
+    throw new InputError("Historical proposals are not available");
   }
   if (output.proposal != null) {
     const raw = object(output.proposal);
@@ -346,33 +344,6 @@ export async function chat(
   if (output.reminder_query != null) {
     reply = reminderReply(reminders, output.reminder_query);
   }
-  let related: RecordData[] = [];
-  let pendingCursor: string | null = null;
-  if (output.proposal_query != null) {
-    const query = queryObject(output.proposal_query, ["id", "cursor"]);
-    if (query.id != null && query.cursor != null) {
-      throw new InputError("Use a proposal ID or cursor, not both");
-    }
-    if (query.id != null) {
-      const saved = await db.ownedMessage(query.id);
-      related = saved?.proposal ? [saved] : [];
-      reply = related.length
-        ? proposalLine(related[0])
-        : "No proposal with that ID was found in your account.";
-    } else {
-      const page = await db.messagePage(query.cursor, true);
-      related = page.messages;
-      pendingCursor = page.cursor;
-      // Keep pagination visible even when model history truncates long pages.
-      reply = `${
-        pendingCursor
-          ? `More history remains. Next cursor: ${pendingCursor}`
-          : "End of history."
-      }\nPending proposals in this page: ${related.length}\n${
-        related.map(proposalLine).join("\n") || "None in this page."
-      }`;
-    }
-  }
   const messages = await db.insert("messages", {
     role: "assistant",
     content: reply,
@@ -381,8 +352,6 @@ export async function chat(
   });
   return {
     ...messages[0],
-    related_messages: related,
-    pending_cursor: pendingCursor,
     timing: {
       provider_ms: Math.round(providerMs),
       application_ms: Math.round(performance.now() - started - providerMs),
