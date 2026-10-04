@@ -32,8 +32,14 @@ header,
   gap: .75rem;
 }
 header {
+  position: relative;
   justify-content: space-between;
   margin-bottom: 1.5rem;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
 }
 .brand-mark,
 .welcome-mark {
@@ -138,16 +144,54 @@ label {
   padding: .45rem;
 }
 .key-setup,
-.privacy,
-#settings {
+.privacy {
   border: 1px solid var(--line);
   border-radius: 1rem;
   padding: 1rem;
   margin: 1rem 0;
   background: var(--surface);
 }
+#settings {
+  position: relative;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: none;
+}
 #settings > summary {
-  font-weight: 600;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.35rem;
+  list-style: none;
+}
+#settings > summary::-webkit-details-marker {
+  display: none;
+}
+#settings > summary::marker {
+  content: "";
+}
+#settings > summary:hover {
+  background: var(--tint);
+}
+.settings-panel {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + .5rem);
+  right: 0;
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: min(75vh, 48rem);
+  overflow: auto;
+  padding: .5rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 12px 36px #00000024;
 }
 #settings .chat-toolbar {
   margin-top: .75rem;
@@ -276,12 +320,27 @@ textarea {
   display: none;
 }
 #notice,
-#send-status {
+#send-status,
+#send-error {
   padding: .75rem 1rem;
   border-radius: .75rem;
   background: var(--tint);
   font-size: .85rem;
   overflow-wrap: anywhere;
+}
+#send-status {
+  margin: .5rem 0 0;
+}
+#send-error {
+  margin-top: .5rem;
+}
+#send-error summary {
+  color: inherit;
+  font-weight: 600;
+}
+#send-error p {
+  margin: .5rem 0 0;
+  white-space: pre-wrap;
 }
 [data-tone="error"] {
   color: light-dark(#9d2336, #ffadb9);
@@ -315,6 +374,10 @@ textarea {
   }
   .brand .hint {
     display: none;
+  }
+  .settings-panel {
+    width: calc(100vw - 1.5rem);
+    right: -.25rem;
   }
   #model {
     flex: 1;

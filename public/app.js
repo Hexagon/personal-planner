@@ -40,6 +40,24 @@ function sendStatus(message, tone = "info") {
   target.hidden = !message;
   target.dataset.tone = tone;
   target.setAttribute("role", tone === "error" ? "alert" : "status");
+  if (tone !== "error") {
+    element("send-error").hidden = true;
+    element("send-error").open = false;
+    element("send-error-details").textContent = "";
+  }
+}
+function requestFailure(error) {
+  sendStatus(
+    "Couldn’t complete the request. Expand for details. Your draft is kept; check the conversation before retrying.",
+    "error",
+  );
+  const status = Number.isInteger(error?.status)
+    ? `HTTP ${error.status}. `
+    : "";
+  element("send-error-details").textContent = `${status}${
+    error?.message ?? "Unknown request error."
+  }`.slice(0, 1000);
+  element("send-error").hidden = false;
 }
 function scrollToLatest() {
   element("chat-form").scrollIntoView({ block: "end" });
@@ -80,6 +98,7 @@ function setSession(value) {
   element("remember-key").checked = saved.keyMode === "device";
   element("login").hidden = !!session;
   element("chat").hidden = !session;
+  element("settings").hidden = !session;
   element("logout").hidden = !session;
   if (previousOwner !== session?.user.id) {
     element("openrouter-key").value = "";
@@ -134,11 +153,13 @@ async function api(path, body) {
     );
   }
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       typeof result?.error === "string"
         ? result.error
         : "Request failed. Refresh chat before retrying.",
     );
+    error.status = response.status;
+    throw error;
   }
   return result;
 }
@@ -294,7 +315,7 @@ function updateBusy(value) {
   busy = value;
   for (
     const control of document.querySelectorAll(
-      "#chat button, #chat textarea, #chat select, #chat input, #logout",
+      "#chat button, #chat textarea, #chat select, #chat input, #settings button, #settings select, #settings input, #logout",
     )
   ) {
     control.disabled = value;
@@ -516,10 +537,7 @@ element("chat-form").onsubmit = (event) => {
           pendingUser = null;
         }
         element("empty-chat").hidden = renderedMessages.size > 0;
-        sendStatus(
-          `${error.message} Your draft is kept. Check the conversation with Refresh chat before resending; the message may have reached the server.`,
-          "error",
-        );
+        requestFailure(error);
       } else {
         notice(error.message, "error");
       }
