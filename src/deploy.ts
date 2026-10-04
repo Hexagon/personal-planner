@@ -3,7 +3,7 @@ import { loadConfig } from "./config.ts";
 import { runSchedulerTick } from "./scheduler.ts";
 
 const config = loadConfig();
-const kv = await Deno.openKv("db://planner-db");
+const kv = await Deno.openKv();
 
 Deno.cron("deliver-reminders", "* * * * *", () => runSchedulerTick(kv));
 Deno.serve(createHandler(config, kv));
