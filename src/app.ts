@@ -95,7 +95,6 @@ export function createHandler(
       }
       if (request.method === "GET" && path === "/api/config") {
         return json({
-          schedulerEnabled: true,
           preview,
           model: config.model,
           models: availableModels,
