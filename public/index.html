@@ -33,11 +33,13 @@
             account for the key you use. Avoid sharing it in chat.</p>
         </fieldset>
         <label
-          class="consent"><input type="checkbox" id="consent"> I agree to send my chat and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
+          class="consent"><input type="checkbox" id="consent"> I agree to send my chat, saved timezone/preferences, reminder summaries, recent proposal states and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
         <label for="model">Model</label>
         <select id="model"></select>
         <div id="messages" role="log" aria-live="polite"
           aria-relevant="additions" aria-label="Conversation"></div>
+        <button id="older-pending"
+          type="button">Find older pending proposals</button>
         <form id="chat-form">
           <label for="prompt">Message</label>
           <textarea id="prompt" maxlength="4000" rows="3"

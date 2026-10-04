@@ -242,6 +242,68 @@ export class Database {
     readonly userId: string,
   ) {}
 
+  // Scan one bounded date-index page, including older pending cards on demand.
+  async messagePage(cursor?: unknown, pendingOnly = false) {
+    const prefix = ["planner", "message_dates", this.userId] as const;
+    let end: Deno.KvKey | undefined;
+    if (cursor !== undefined && cursor !== null) {
+      let parsed: RecordData;
+      try {
+        parsed = object(JSON.parse(text(cursor, 200)));
+      } catch {
+        throw new InputError("Invalid message cursor");
+      }
+      if (
+        Object.keys(parsed).some((field) =>
+          !["created_at", "id"].includes(field)
+        ) ||
+        typeof parsed.created_at !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
+          parsed.created_at,
+        ) ||
+        !Number.isFinite(Date.parse(parsed.created_at))
+      ) throw new InputError("Invalid message cursor");
+      end = [...prefix, parsed.created_at, uuid(parsed.id)];
+    }
+    const indexes = [];
+    for await (
+      const index of this.kv.list<string>(
+        end ? { prefix, end } : { prefix },
+        { reverse: true, limit: 101 },
+      )
+    ) indexes.push(index);
+    const hasMore = indexes.length > 100;
+    const page = indexes.slice(0, 100);
+    const messages: RecordData[] = [];
+    for (let offset = 0; offset < page.length; offset += 10) {
+      const rows = await this.kv.getMany(
+        page.slice(offset, offset + 10).map((index) =>
+          key("messages", this.userId, String(index.key[4]))
+        ),
+      ) as Deno.KvEntryMaybe<RecordData>[];
+      for (const row of rows) {
+        if (
+          row.value && (!pendingOnly || row.value.action_state === "pending")
+        ) {
+          messages.push(row.value);
+        }
+      }
+    }
+    const last = page.at(-1);
+    return {
+      messages,
+      cursor: hasMore && last
+        ? JSON.stringify({ created_at: last.key[3], id: last.key[4] })
+        : null,
+    };
+  }
+
+  async ownedMessage(id: unknown): Promise<RecordData | null> {
+    return (await this.kv.get<RecordData>(
+      key("messages", this.userId, uuid(id)),
+    )).value;
+  }
+
   async list(table: Table, columns = "*"): Promise<RecordData[]> {
     const rows = table === "profiles"
       ? await (async () => {

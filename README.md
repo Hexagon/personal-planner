@@ -105,6 +105,9 @@ always-running server.
   tasks.)
 - “What should we do today?”
 - “Remind me every Sunday at 18:00 to plan our week, in Europe/Stockholm.”
+- “What timezone and preferences have I saved?” / “Show my reminders.”
+- “What still needs confirmation?” / “Show the next page of pending proposals.”
+- “Reopen car service.” / “Delete the cancelled task by its ID.”
 
 Review the structured proposal displayed in chat, then **Confirm** or
 **Cancel**. Even additions require confirmation. Changing tasks, completing or
@@ -114,6 +117,24 @@ to 20 tasks and succeeds or fails as a whole. Ambiguous task names require
 clarification rather than guessed matches. To change a proposal, cancel it and
 ask again with the correction. To alter a reminder, remove it and create a new
 one. Updates preserve fields not explicitly changed.
+
+Settings, reminder lists/details and proposal status are rendered from your
+account's saved data by code, not invented by the model. Reminder replies show
+stable IDs, the complete description, schedule, timezone, active state and next
+run; lists have ten-record pages. Task updates/deletions resolve your name or ID
+reference server-side across open, done and cancelled tasks. Unknown or
+ambiguous references require clarification; finished tasks are not sent
+wholesale to AI. Pending proposals are not saved records and chat cannot
+confirm/cancel them. Use their inline buttons. **Find older pending proposals**
+checks one bounded 100-message history page per click, including after
+reloading; continue clicking until the end of history. Asking about pending
+proposals also returns usable inline cards and a cursor for the next page.
+Confirmation remains transactional and safe to retry.
+
+AI context includes complete saved preferences (up to 4,000 characters) and a
+bounded sample of the latest 20 proposal states from the recent 100 messages,
+with IDs, operations and safe summaries, never proposal `full_description`
+payloads. Absence from that sample does not establish confirmation status.
 
 ## Tasks
 
@@ -164,8 +185,9 @@ Everything the planner tracks is a task with a fixed set of fields:
   that owner; client/model-supplied owner IDs are ignored. Confirmation,
   cancellation, the open-task cap, and reminder delivery use atomic KV
   transactions. Confirmation can only transition pending proposals.
-- Before sending chat, users must accept a notice that chat and open tasks'
-  names, short descriptions, locations, priorities and dates go through
+- Before sending chat, users must accept a notice that chat, saved timezone and
+  complete preferences, reminder summaries, recent proposal states and open
+  tasks' names, short descriptions, locations, priorities and dates go through
   OpenRouter and its model provider. Online search is an optional per-message
   choice; when enabled, OpenRouter may send generated search queries to its
   search provider. Search is limited to three results per request. Treat search

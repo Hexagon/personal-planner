@@ -11,6 +11,7 @@ let session = null;
 let busy = false;
 let openrouterKey = sessionStorage.getItem("openrouter-key") ?? "";
 const renderedMessages = new Map();
+let pendingCursor = null;
 const notice = (message) => {
   element("notice").textContent = message;
 };
@@ -35,6 +36,7 @@ function setSession(value) {
     updateKeyStatus();
     element("messages").replaceChildren();
     renderedMessages.clear();
+    pendingCursor = null;
   }
   updateKeyStatus();
 }
@@ -133,6 +135,9 @@ function render(messages) {
                 cancel,
               });
               await refresh();
+              render(
+                await api(`/api/messages?id=${encodeURIComponent(message.id)}`),
+              );
               if (!result.result) {
                 notice(
                   "Proposal status changed elsewhere. See refreshed status.",
@@ -163,6 +168,19 @@ function render(messages) {
 async function refresh() {
   render(await api("/api/messages"));
 }
+element("older-pending").onclick = () =>
+  action(async () => {
+    const params = new URLSearchParams({ pending: "true" });
+    if (pendingCursor) params.set("cursor", pendingCursor);
+    const page = await api(`/api/messages?${params}`);
+    render(page.messages);
+    pendingCursor = page.cursor;
+    notice(
+      page.cursor
+        ? "Page checked. Click again to find older pending proposals."
+        : "All history checked. Click again to recheck from the latest page.",
+    );
+  });
 async function action(callback) {
   if (busy) return;
   busy = true;
@@ -256,13 +274,15 @@ element("chat-form").onsubmit = (event) => {
     if (!element("consent").checked) {
       throw new Error("Please review and accept the AI data notice first.");
     }
-    await api("/api/chat", {
+    const message = await api("/api/chat", {
       content: element("prompt").value,
       model: element("model").value,
       ai_consent: true,
       online_search: element("online-search").checked,
       ...(openrouterKey ? { openrouter_key: openrouterKey } : {}),
     });
+    render(message.related_messages ?? []);
+    if (message.pending_cursor) pendingCursor = message.pending_cursor;
     element("prompt").value = "";
     element("online-search").checked = false;
     await refresh();
