@@ -1,9 +1,10 @@
-import { createHandler } from "./app.ts";
+import { createHandler, isPreviewDeployment } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { runSchedulerTick, startScheduler } from "./scheduler.ts";
 
 const config = loadConfig();
 const isDeploy = Deno.env.get("DENO_DEPLOYMENT_ID") !== undefined;
+const preview = isPreviewDeployment(isDeploy, Deno.env.get("APP_ENV"));
 if (!isDeploy) {
   await Deno.mkdir("./data", { recursive: true, mode: 0o700 });
   if (Deno.build.os !== "windows") await Deno.chmod("./data", 0o700);
@@ -17,7 +18,7 @@ if (isDeploy) {
 }
 const server = Deno.serve(
   { port: config.port },
-  createHandler(config, kv),
+  createHandler(config, kv, preview),
 );
 if (scheduler) {
   Deno.addSignalListener("SIGTERM", () => {

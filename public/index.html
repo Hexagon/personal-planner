@@ -3,7 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Family Planner</title>
+    <title>Personal Planner | Tasks and reminders in one conversation</title>
+    <meta name="description"
+      content="Plan tasks, errands, and recurring reminders in plain language. Review every change before it is saved and see what is coming up.">
+    <meta property="og:type" content="website">
+    <meta property="og:title"
+      content="Personal Planner | Tasks and reminders in one conversation">
+    <meta property="og:description"
+      content="Plan tasks, errands, and recurring reminders in plain language. Review every change before it is saved and see what is coming up.">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title"
+      content="Personal Planner | Tasks and reminders in one conversation">
+    <meta name="twitter:description"
+      content="Plan tasks, errands, and recurring reminders in plain language. Review every change before it is saved and see what is coming up.">
     <link rel="icon" type="image/svg+xml" href="/icon.svg">
     <link rel="stylesheet" href="/style.css">
     <script type="module" src="/app.js"></script>
@@ -12,104 +24,177 @@
     <main>
       <header>
         <div class="brand"><img class="brand-mark" src="/icon.svg" alt="">
-          <div><h1>Family Planner</h1><p class="hint">A little clarity for every day</p></div>
+          <div><h1>Personal Planner</h1><p class="hint">A little clarity for every day</p></div>
         </div>
-        <button id="logout" class="secondary" hidden>Log out</button>
-      </header>
-      <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
-      <section id="login">
-        <p class="eyebrow">Less juggling. More living.</p>
-        <h2>Your day, in one conversation.</h2>
-        <p>Make room for what matters. Plan tasks, organize errands, and keep
-          your family moving together.</p>
-        <p>Sign in or create an account with a provider below. Use the same
-          provider each time; provider accounts are kept separate.</p>
-        <div id="auth-providers"></div>
-      </section>
-      <section id="chat" hidden>
-        <details id="settings" open>
-          <summary>Settings</summary>
-          <div class="chat-toolbar">
-            <span id="key-status" class="hint"></span>
-            <button id="change-key" class="secondary" type="button"
-              hidden>Change key</button>
-            <button id="clear-key" class="secondary" type="button"
-              hidden>Clear my key</button>
-            <label for="model">Model</label>
-            <select id="model"></select>
-            <label for="reasoning">Reasoning</label>
-            <select id="reasoning">
-              <option value="off">Off</option>
-              <option value="high">High</option>
-              <option value="default">Provider default</option>
-            </select>
-          </div>
-          <fieldset id="key-setup" class="key-setup">
-            <legend>OpenRouter API key</legend>
-            <label for="openrouter-key">Your key (optional if the app provides
-            one)</label>
-            <input id="openrouter-key" type="password" autocomplete="off"
-              spellcheck="false" maxlength="512">
-            <label><input id="remember-key" type="checkbox"> Remember this key on this device</label>
-            <button id="save-key" type="button">Use key</button>
-            <button id="cancel-key" class="secondary" type="button"
-              hidden>Keep current key</button>
+        <div class="header-actions">
+          <span id="preview-badge" class="preview-badge" hidden>Preview</span>
+          <details id="upcoming" hidden>
+            <summary aria-label="Upcoming reminders and due tasks"
+              title="Upcoming reminders and due tasks">
+              <span aria-hidden="true">⏰</span>
+              <span id="upcoming-badge" aria-hidden="true" hidden></span>
+            </summary>
+            <div class="upcoming-panel">
+              <div class="pane-heading">
+                <h2>Coming up</h2>
+                <button id="close-upcoming" class="secondary" type="button"
+                  aria-label="Close upcoming">✕</button>
+              </div>
+              <p id="upcoming-status" class="hint" role="status">Loading…</p>
+              <div id="upcoming-list"></div>
+              <p class="hint">Saved tasks and each reminder’s next occurrence.
+                Make changes in chat; nothing here changes your planner.</p>
+              <button id="refresh-upcoming" class="secondary"
+                type="button">Refresh</button>
+            </div>
+          </details>
+          <details id="settings" hidden>
+            <summary aria-label="Settings" title="Settings"><span
+              aria-hidden="true">⚙</span></summary>
+            <div class="settings-panel">
+              <div class="chat-toolbar">
+                <span id="key-status" class="hint"></span>
+                <button id="change-key" class="secondary" type="button"
+                  hidden>Change key</button>
+                <button id="clear-key" class="secondary" type="button"
+                  hidden>Clear my key</button>
+                <label for="model">Model</label>
+                <select id="model"></select>
+                <label for="reasoning">Reasoning</label>
+                <select id="reasoning">
+                  <option value="off">Off</option>
+                  <option value="high">High</option>
+                  <option value="default">Provider default</option>
+                </select>
+              </div>
+              <fieldset id="key-setup" class="key-setup">
+                <legend>OpenRouter API key</legend>
+                <label
+                  for="openrouter-key">Your key (optional if the app provides
+                one)</label>
+                <input id="openrouter-key" type="password" autocomplete="off"
+                  spellcheck="false" maxlength="512">
+                <label><input id="remember-key" type="checkbox"> Remember this key on this device</label>
+                <button id="save-key" type="button">Use key</button>
+                <button id="cancel-key" class="secondary" type="button"
+                  hidden>Keep current key</button>
+                <p
+                  class="hint">By default your key stays in this browser tab’s session storage.
+                Remembering it stores a persistent credential in this browser, accessible
+                to scripts and anyone using this browser profile. Do not remember it on
+                a shared device. It is sent through this app to OpenRouter when you chat. It is not
+                saved to your planner account. OpenRouter usage is billed to the
+                account for the key you use. Avoid sharing it in chat.</p>
+              </fieldset>
+              <div class="privacy">
+                <strong>Before we chat · AI data notice</strong>
+                <label
+                  class="consent"><input type="checkbox" id="consent"> I agree to send my chat, saved timezone/preferences, reminder summaries, recent proposal states and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
+                <p
+                  class="hint">Consent and model/reasoning preferences are remembered for
+                this signed-in account on this browser. Uncheck to revoke AI consent.</p>
+              </div>
+            </div>
+          </details>
+          <button id="logout" class="secondary icon-button" type="button"
+            aria-label="Log out" title="Log out" hidden>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M10 17l5-5-5-5M15 12H3"></path>
+              <path d="M12 3h6a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-6"></path>
+            </svg>
+          </button>
+          </header>
+          <p id="notice" role="status" aria-live="polite"
+            aria-atomic="true"></p>
+          <section id="login">
+            <p class="eyebrow">Less juggling. More living.</p>
+            <h2 id="landing-title">Your day, in one conversation.</h2>
+            <p>Plan tasks, organize errands, and set recurring reminders with a
+          simple chat. See what is coming up, and review every change before it
+          is saved.</p>
+            <p>Sign in or create an account with a provider below. Use the same
+          provider each time. Your planner is personal; accounts are kept
+          separate.</p>
+            <div id="auth-providers"></div>
+            <section class="landing-details" aria-labelledby="planner-benefits">
+              <h3 id="planner-benefits">A calmer way to plan your day</h3>
+              <ul>
+                <li><strong>Plan in plain language.</strong> Add tasks and errands
+              by chatting about what you need to do.</li>
+                <li><strong>Know what is next.</strong> Check upcoming due dates and
+              each reminder’s next occurrence.</li>
+                <li><strong>Stay in control.</strong> Review and confirm proposed
+              changes before they are saved.</li>
+              </ul>
+            </section>
+          </section>
+          <section id="chat" hidden>
+            <aside id="upcoming-pane" aria-label="Needs attention" hidden>
+              <div class="pane-heading">
+                <strong>On your radar</strong>
+                <button id="hide-upcoming-pane" class="secondary" type="button"
+                  aria-label="Hide on your radar for this session">✕</button>
+              </div>
+              <ul id="upcoming-preview" class="upcoming-items"></ul>
+              <button id="show-upcoming" class="secondary"
+                type="button">See all upcoming</button>
+            </aside>
+            <div id="empty-chat">
+              <img class="welcome-mark" src="/icon.svg" alt="">
+              <h2>What’s on your mind today?</h2>
+              <p class="hint">Start with a task, an errand, or a plan.</p>
+              <div class="suggestions">
+                <button class="secondary" type="button"
+                  data-prompt="What’s urgent today?">What’s urgent today?</button>
+                <button class="secondary" type="button"
+                  data-prompt="Help me plan my day.">Help me plan my day</button>
+                <button class="secondary" type="button"
+                  data-prompt="Add groceries at ICA, due Friday.">Plan a grocery run</button>
+                <button class="secondary" type="button"
+                  data-prompt="I’m going to ICA. What should I pick up?">What should I pick up?</button>
+              </div>
+            </div>
+            <div id="messages" role="log" aria-live="polite"
+              aria-relevant="additions" aria-label="Conversation"></div>
+            <div class="history-tools">
+              <button id="older-pending" class="secondary"
+                type="button">Find older pending proposals</button>
+              <button id="refresh-chat" class="secondary"
+                type="button">Refresh chat</button>
+            </div>
+            <form id="chat-form" class="compact">
+              <label for="prompt" class="sr-only">Message</label>
+              <div class="composer-input-row">
+                <textarea id="prompt" maxlength="4000" rows="1"
+                  placeholder="Ask anything about your day…"
+                  required></textarea>
+                <button id="composer-toggle" class="secondary composer-toggle"
+                  type="button" aria-expanded="false"
+                  aria-controls="composer-details"
+                  aria-label="Expand message composer"
+                  title="Expand message composer">⤢</button>
+                <button id="send" type="submit">Send ↑</button>
+              </div>
+              <div class="composer-tools">
+                <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
+              </div>
+              <div id="composer-details">
+                <p id="send-status" role="status" aria-live="polite"
+                  aria-atomic="true" hidden></p>
+                <details id="send-error" hidden>
+                  <summary>What went wrong?</summary>
+                  <p id="send-error-details"></p>
+                </details>
+                <p id="timing" class="hint" role="status" hidden></p>
+                <p
+                  class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
+              </div>
+            </form>
             <p
-              class="hint">By default your key stays in this browser tab’s session storage.
-            Remembering it stores a persistent credential in this browser, accessible
-            to scripts and anyone using this browser profile. Do not remember it on
-            a shared device. It is sent through this app to OpenRouter when you chat. It is not
-            saved to your planner account. OpenRouter usage is billed to the
-            account for the key you use. Avoid sharing it in chat.</p>
-          </fieldset>
-          <div class="privacy">
-            <strong>Before we chat · AI data notice</strong>
-            <label
-              class="consent"><input type="checkbox" id="consent"> I agree to send my chat, saved timezone/preferences, reminder summaries, recent proposal states and open tasks’ names, short descriptions, locations, priorities and dates (saved full descriptions are not sent) to OpenRouter and its model provider. When online search is enabled, generated search queries may also go to OpenRouter’s search provider. Do not include secrets.</label>
-            <p
-              class="hint">Consent and model/reasoning preferences are remembered for
-            this signed-in account on this browser. Uncheck to revoke AI consent.</p>
-          </div>
-        </details>
-        <div id="empty-chat">
-          <img class="welcome-mark" src="/icon.svg" alt="">
-          <h2>What’s on your mind today?</h2>
-          <p class="hint">Start with a task, an errand, or a plan.</p>
-          <div class="suggestions">
-            <button class="secondary" type="button"
-              data-prompt="What’s urgent today?">What’s urgent today?</button>
-            <button class="secondary" type="button"
-              data-prompt="Help me plan my day.">Help me plan my day</button>
-            <button class="secondary" type="button"
-              data-prompt="Add groceries at ICA, due Friday.">Plan a grocery run</button>
-          </div>
-        </div>
-        <div id="messages" role="log" aria-live="polite"
-          aria-relevant="additions" aria-label="Conversation"></div>
-        <div class="history-tools">
-          <button id="older-pending" class="secondary"
-            type="button">Find older pending proposals</button>
-          <button id="refresh-chat" class="secondary"
-            type="button">Refresh chat</button>
-        </div>
-        <form id="chat-form">
-          <label for="prompt" class="sr-only">Message</label>
-          <textarea id="prompt" maxlength="4000" rows="3"
-            placeholder="Ask anything about your day…"
-            required></textarea>
-          <div class="composer-tools">
-            <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
-            <button id="send" type="submit">Send ↑</button>
-          </div>
-          <p id="send-status" role="status" aria-live="polite"
-            aria-atomic="true" hidden></p>
-          <p id="timing" class="hint" role="status" hidden></p>
-          <p
-            class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
-        </form>
-        <p
-          class="hint">All task and schedule changes need an inline confirmation.</p>
-      </section>
-    </main>
-  </body>
-</html>
+              class="hint">All task and schedule changes need an inline confirmation.</p>
+          </section>
+          </main>
+          </body>
+          </html>

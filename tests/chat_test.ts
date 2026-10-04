@@ -118,6 +118,21 @@ Deno.test("reasoning uses OpenRouter controls and timing is not persisted", asyn
   }
 });
 
+Deno.test("system instructions allow Markdown in ordinary replies", async () => {
+  await run({
+    tasks: [],
+    output: { reply: "Hello", proposal: null },
+    onModel: (request) => {
+      const system = String(
+        (request.messages as RecordData[])[0].content,
+      );
+      assert(system.includes("not wrapped in Markdown"));
+      assert(system.includes("Markdown formatting in ordinary text replies"));
+      assert(system.includes("renders Markdown in chat history"));
+    },
+  }, "Hello");
+});
+
 Deno.test("invalid provider responses and transport failures never save assistant proposals", async () => {
   const original = globalThis.fetch;
   const valid = JSON.stringify({ reply: "Hello", proposal: null });
@@ -357,6 +372,23 @@ Deno.test("lists and completions are rendered from saved records", async () => {
   const content = String(list.message.content);
   assert(content.includes("Milk") && content.includes("Router"));
   assert(!content.includes("caviar") && !content.includes("Lawn"));
+  const datedList = await run({
+    tasks: [
+      ...tasks,
+      task(4, {
+        name: "Bread",
+        location_name: "ICA",
+        due_date: "2026-01-02",
+      }),
+    ],
+    output: {
+      reply: "These groceries might help.",
+      proposal: null,
+      task_query: { location_name: "ICA", due_date: "2026-01-02" },
+    },
+  }, "I’m going to ICA tomorrow. What should I pick up?");
+  assert(String(datedList.message.content).includes("Bread"));
+  assert(!String(datedList.message.content).includes("Milk"));
   const done = await run({
     tasks,
     output: {

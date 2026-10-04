@@ -1,9 +1,10 @@
 import { encode } from "@auth/core/jwt";
 import { authConfig } from "../src/auth.ts";
-import { createHandler } from "../src/app.ts";
+import { createHandler, isPreviewDeployment } from "../src/app.ts";
 import type { Config } from "../src/config.ts";
 import { Database, deliverReminder, dueReminders } from "../src/db.ts";
 import { runSchedulerTick } from "../src/scheduler.ts";
+import { upcoming } from "../src/upcoming.ts";
 import {
   InputError,
   maxOpenTasks,
@@ -61,6 +62,13 @@ async function withKv(test: (kv: Deno.Kv) => Promise<void>) {
 }
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+Deno.test("preview badge is limited to non-production Deno Deploy", () => {
+  assert(!isPreviewDeployment(false, undefined));
+  assert(!isPreviewDeployment(true, "production"));
+  assert(isPreviewDeployment(true, "preview"));
+  assert(isPreviewDeployment(true, undefined));
+});
 
 Deno.test("bounded pending pages expose old inline cards after reload without crossing owners", async () => {
   await withKv(async (kv) => {
@@ -157,6 +165,157 @@ function task(n: number, status = "open"): RecordData {
     completed_at: null,
   };
 }
+
+Deno.test("upcoming is authenticated, read-only, owner scoped and excludes private or inactive records", async () => {
+  await withKv(async (kv) => {
+    const handler = createHandler(config, kv);
+    assert((await handler(request("/api/upcoming"))).status === 401);
+    const cookie = await sessionCookie();
+    assert(
+      (await handler(request("/api/upcoming", {}, config.origin, cookie)))
+        .status === 405,
+    );
+    assert(
+      (await handler(
+        request("/api/upcoming?owner=other", undefined, config.origin, cookie),
+      )).status === 400,
+    );
+    const empty = await (await handler(
+      request("/api/upcoming", undefined, config.origin, cookie),
+    )).json();
+    assert(empty.timezone === "UTC" && empty.items.length === 0);
+    for (
+      const [n, status, due] of [
+        [1, "open", "2026-10-04"],
+        [2, "done", "2026-10-04"],
+        [3, "cancelled", "2026-10-04"],
+        [4, "open", null],
+        [5, "open", "2026-10-04"],
+      ] as const
+    ) {
+      const row: RecordData = { ...task(n, status), due_date: due };
+      delete row.full_description;
+      await kv.set(["planner", "tasks", owner, id(n)], row);
+    }
+    await kv.set(
+      ["planner", "task_descriptions", owner, id(1)],
+      "PRIVATE-DESCRIPTION",
+    );
+    await kv.set(["planner", "tasks", otherOwner, id(6)], {
+      ...task(6),
+      name: "FOREIGN-TASK",
+      due_date: "2026-10-04",
+    });
+    await kv.set(["planner", "task_completions", owner, id(10)], {
+      ids: [id(5)],
+      revision: 1,
+      completed_at: "2026-10-04T00:00:00Z",
+    });
+    for (
+      const [user, n, active, description] of [
+        [owner, 7, true, "Saved reminder"],
+        [owner, 8, false, "DISABLED-REMINDER"],
+        [otherOwner, 9, true, "FOREIGN-REMINDER"],
+      ] as const
+    ) {
+      await kv.set(["planner", "reminders", user, id(n)], {
+        id: id(n),
+        active,
+        description,
+        timezone: "UTC",
+        next_run: "2026-10-05T12:00:00.000Z",
+      });
+    }
+    const response = await handler(
+      request("/api/upcoming", undefined, config.origin, cookie),
+    );
+    assert(
+      response.status === 200 &&
+        response.headers.get("Cache-Control") === "no-store",
+    );
+    const body = await response.text();
+    assert(
+      !body.includes("PRIVATE-DESCRIPTION") &&
+        !body.includes("full_description"),
+    );
+    assert(!body.includes("FOREIGN") && !body.includes("DISABLED"));
+    assert(!body.includes("user_id") && !body.includes("task_revision"));
+    const data = JSON.parse(body);
+    assert(data.items.length === 2);
+    assert(data.items[0].id === id(1) && data.items[1].id === id(7));
+    const other = await (await handler(
+      request(
+        "/api/upcoming",
+        undefined,
+        config.origin,
+        await sessionCookie(otherOwner),
+      ),
+    )).json();
+    assert(
+      other.items.length === 2 &&
+        other.items.every((item: { title: string }) =>
+          item.title.startsWith("FOREIGN")
+        ),
+    );
+  });
+});
+
+Deno.test("upcoming respects local date boundaries, near-term windows, priority and pending delivery", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    await kv.set(["planner", "profiles", owner], {
+      timezone: "Europe/Stockholm",
+    });
+    for (
+      const [n, due, priority] of [
+        [1, "2026-10-03", 3],
+        [2, "2026-10-04", 2],
+        [3, "2026-10-04", 5],
+        [4, "2026-10-05", 3],
+        [5, "2027-01-01", 3],
+      ] as const
+    ) {
+      const row: RecordData = { ...task(n), due_date: due, priority };
+      delete row.full_description;
+      await kv.set(["planner", "tasks", owner, id(n)], row);
+    }
+    const now = new Date("2026-10-03T22:30:00.000Z");
+    for (
+      const [n, when] of [
+        [6, "2026-10-03T22:00:00.000Z"],
+        [7, "2026-10-04T22:30:00.000Z"],
+        [8, "2026-10-04T22:30:00.001Z"],
+      ] as const
+    ) {
+      await kv.set(["planner", "reminders", owner, id(n)], {
+        id: id(n),
+        active: true,
+        description: `Reminder ${n}`,
+        timezone: "America/New_York",
+        next_run: when,
+      });
+    }
+    const data = await upcoming(db, now);
+    const find = (n: number) => data.items.find((item) => item.id === id(n))!;
+    assert(find(1).group === "Overdue" && find(1).attention);
+    assert(find(2).group === "Today" && find(2).attention);
+    assert(find(4).group === "Tomorrow" && !find(4).attention);
+    assert(find(5).group === "Later" && !find(5).attention);
+    assert(data.items.indexOf(find(3)) < data.items.indexOf(find(2)));
+    assert(find(6).waiting && find(6).attention && find(6).group === "Today");
+    assert(
+      find(7).attention && !find(7).waiting && find(7).group === "Tomorrow",
+    );
+    assert(!find(8).attention);
+    assert(find(7).timezone === "America/New_York");
+    await kv.set(["planner", "profiles", owner], {
+      timezone: "America/Los_Angeles",
+    });
+    const west = await upcoming(db, now);
+    assert(west.items.find((item) => item.id === id(1))?.group === "Today");
+    assert(west.items.find((item) => item.id === id(2))?.group === "Tomorrow");
+  });
+});
 
 Deno.test("public config is safe; APIs require same-origin requests and a valid Auth.js session", async () => {
   await withKv(async (kv) => {
@@ -584,13 +743,35 @@ Deno.test("confirmation applies a task mutation once and uses a transactional ta
       content: "Add task? Confirm below.",
       proposal: {
         op: "add_task",
-        data: { name: "Bike service", short_description: "Service bikes" },
+        data: {
+          name: "Bike service",
+          short_description: "Service bikes",
+          full_description: "Replace the worn chain",
+          location_name: "Workshop",
+          priority: 4,
+          due_date: "2026-10-10",
+        },
       },
     });
     assert(await db.confirm(message.id, false));
     assert(!(await db.confirm(message.id, false)));
     const rows = await db.list("tasks");
-    assert(rows.length === 1 && rows[0].name === "Bike service");
+    assert(
+      rows.length === 1 &&
+        rows[0].name === "Bike service" &&
+        rows[0].short_description === "Service bikes" &&
+        rows[0].location_name === "Workshop" &&
+        rows[0].priority === 4 &&
+        rows[0].due_date === "2026-10-10" &&
+        rows[0].status === "open" &&
+        rows[0].user_id === owner,
+      "Confirmation must save the proposed task fields",
+    );
+    assert(
+      (await db.ownedTaskDetail(rows[0].id)).full_description ===
+        "Replace the worn chain",
+      "Confirmation must save the proposed private task details",
+    );
     assert(
       (await kv.get<RecordData>([
         "planner",
@@ -640,6 +821,49 @@ Deno.test("confirmation applies a task mutation once and uses a transactional ta
   });
 });
 
+Deno.test("confirmation applies every requested task update field", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    await db.ensureProfile();
+    await kv.set(["planner", "tasks", owner, id(1)], task(1));
+    const [message] = await db.insert("messages", {
+      role: "assistant",
+      content: "Update task?",
+      proposal: {
+        op: "update_task",
+        data: {
+          id: id(1),
+          name: "Updated task",
+          short_description: "Updated summary",
+          full_description: "Updated private details",
+          location_name: "ICA",
+          priority: 5,
+          due_date: "2026-10-10",
+          status: "done",
+        },
+      },
+    });
+
+    assert(await db.confirm(message.id, false));
+    const updated = await db.owned("tasks", id(1));
+    assert(
+      updated.name === "Updated task" &&
+        updated.short_description === "Updated summary" &&
+        updated.location_name === "ICA" &&
+        updated.priority === 5 &&
+        updated.due_date === "2026-10-10" &&
+        updated.status === "done" &&
+        typeof updated.completed_at === "string",
+      "Confirmation must apply the proposed task fields and status",
+    );
+    assert(
+      (await db.ownedTaskDetail(id(1))).full_description ===
+        "Updated private details",
+      "Confirmation must update the proposed private task details",
+    );
+  });
+});
+
 Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", async () => {
   await withKv(async (kv) => {
     const db = new Database(kv, owner);
@@ -647,10 +871,21 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
     const profile = await db.insert("messages", {
       role: "assistant",
       content: "Set timezone?",
-      proposal: { op: "set_profile", data: { timezone: "Europe/Stockholm" } },
+      proposal: {
+        op: "set_profile",
+        data: {
+          timezone: "Europe/Stockholm",
+          preferences: "Plan around school pickup",
+        },
+      },
     });
     assert(await db.confirm(profile[0].id, false));
-    assert((await db.list("profiles"))[0].timezone === "Europe/Stockholm");
+    const savedProfile = (await db.list("profiles"))[0];
+    assert(
+      savedProfile.timezone === "Europe/Stockholm" &&
+        savedProfile.preferences === "Plan around school pickup",
+      "Confirmation must save each proposed profile field",
+    );
 
     const taskIds = Array.from({ length: 20 }, (_, index) => id(index + 100));
     for (let index = 0; index < taskIds.length; index++) {
@@ -715,7 +950,12 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
     assert(await db.confirm(reminder[0].id, false));
     const [savedReminder] = await db.list("reminders");
     assert(
-      savedReminder.description === "Plan" && savedReminder.active === true,
+      savedReminder.description === "Plan" &&
+        savedReminder.cron === "0 9 * * *" &&
+        savedReminder.timezone === "UTC" &&
+        typeof savedReminder.next_run === "string" &&
+        savedReminder.active === true,
+      "Confirmation must save the proposed reminder schedule",
     );
     assert((await dueReminders(kv, "2999-01-01T00:00:00.000Z")).length === 1);
 

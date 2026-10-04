@@ -87,6 +87,11 @@ Deno.test("unfiltered lists are grouped by location with unlocated tasks last", 
   assert(groups.length === 2 && groups[0].tasks.length === 2);
 });
 
+Deno.test("open task lists prioritize urgency and saved priority", () => {
+  const list = taskList([tasks[1], tasks[0]], {}, today);
+  assert(list.indexOf("Milk —") < list.indexOf("Router —"), list);
+});
+
 Deno.test("urgency and status filters use code-calculated urgency", () => {
   const urgent = taskList(
     tasks,
@@ -100,6 +105,18 @@ Deno.test("urgency and status filters use code-calculated urgency", () => {
   assert(done.includes("Library books") && !done.includes("Milk"));
   rejects(() => taskList(tasks, { urgency: ["urgent"] }, today));
   rejects(() => taskList(tasks, { status: "archived" }, today));
+});
+
+Deno.test("exact-date task lists use validated saved due dates", () => {
+  const list = taskList(
+    tasks,
+    { location_name: "ICA", due_date: "2026-01-10" },
+    today,
+  );
+  assert(list.includes("Open tasks (at ICA, due 2026-01-10): 1"), list);
+  assert(list.includes("Milk") && !list.includes("Router"));
+  rejects(() => taskList(tasks, { due_date: "2026-02-30" }, today));
+  rejects(() => taskList(tasks, { due_date: "next Friday" }, today));
 });
 
 Deno.test("references resolve by exact name or ID and never guess", () => {
