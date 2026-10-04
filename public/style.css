@@ -317,10 +317,48 @@ article strong {
   color: var(--accent);
   font-size: .8rem;
 }
-article p {
-  white-space: pre-wrap;
+.message-content {
   overflow-wrap: anywhere;
-  margin: .5rem 0 0;
+}
+.message-content > :first-child {
+  margin-top: .5rem;
+}
+.message-content p,
+.message-content ul,
+.message-content ol,
+.message-content blockquote,
+.message-content pre {
+  margin: .5rem 0;
+}
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  margin: .75rem 0 .25rem;
+  line-height: 1.3;
+}
+.message-content pre {
+  overflow-x: auto;
+  padding: .75rem;
+  border-radius: .6rem;
+  background: var(--surface);
+}
+.message-content code {
+  padding: .1rem .25rem;
+  border-radius: .25rem;
+  background: var(--surface);
+  font-family: ui-monospace, monospace;
+}
+.message-content pre code {
+  padding: 0;
+  background: none;
+}
+.message-content blockquote {
+  padding-left: .75rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
 }
 article button {
   margin: .75rem .5rem 0 0;
