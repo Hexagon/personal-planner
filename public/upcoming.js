@@ -1,4 +1,4 @@
-export function createUpcoming({ api, getOwner }) {
+export function createUpcoming({ api, getOwner, onData = (_data) => {} }) {
   const element = (id) => document.getElementById(id);
   const menu = element("upcoming");
   const pane = element("upcoming-pane");
@@ -128,6 +128,7 @@ export function createUpcoming({ api, getOwner }) {
       const data = await api("/api/upcoming");
       if (owner !== getOwner() || current !== revision) return;
       render(data);
+      onData(data);
     } catch {
       if (owner !== getOwner() || current !== revision) return;
       pane.hidden = true;

@@ -41,7 +41,14 @@ try {
 } catch {
   // Browser timezone detection is optional.
 }
-const upcoming = createUpcoming({ api, getOwner: () => session?.user.id });
+const upcoming = createUpcoming({
+  api,
+  getOwner: () => session?.user.id,
+  onData: (data) => {
+    onboarding.setTimezone(data.timezone);
+    updateOnboarding();
+  },
+});
 let busy = false;
 const settings = createSettings({
   models: config.models.map((model) => model.id),
@@ -223,7 +230,6 @@ function setSession(value) {
 }
 async function api(path, body) {
   if (!session) throw new Error("Please log in");
-  const requestOwner = session.user.id;
   let response;
   try {
     response = await fetch(path, {
@@ -259,10 +265,6 @@ async function api(path, body) {
     );
     error.status = response.status;
     throw error;
-  }
-  if (path === "/api/upcoming" && session?.user.id === requestOwner) {
-    onboarding.setTimezone(result.timezone);
-    updateOnboarding();
   }
   return result;
 }
