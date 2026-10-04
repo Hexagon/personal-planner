@@ -53,8 +53,9 @@ function requestFailure(error) {
   const status = Number.isInteger(error?.status)
     ? `HTTP ${error.status}. `
     : "";
-  element("send-error-details").textContent =
-    `${status}${error?.message ?? "Unknown request error."}`.slice(0, 1000);
+  element("send-error-details").textContent = `${status}${
+    error?.message ?? "Unknown request error."
+  }`.slice(0, 1000);
   element("send-error").hidden = false;
 }
 function scrollToLatest() {
