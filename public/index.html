@@ -105,96 +105,97 @@
               <path d="M12 3h6a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-6"></path>
             </svg>
           </button>
-          </header>
-          <p id="notice" role="status" aria-live="polite"
-            aria-atomic="true"></p>
-          <section id="login">
-            <p class="eyebrow">Less juggling. More living.</p>
-            <h2 id="landing-title">Your day, in one conversation.</h2>
-            <p>Plan tasks, organize errands, and set recurring reminders with a
+        </div>
+      </header>
+      <p id="notice" role="status" aria-live="polite"
+        aria-atomic="true"></p>
+      <section id="login">
+        <p class="eyebrow">Less juggling. More living.</p>
+        <h2 id="landing-title">Your day, in one conversation.</h2>
+        <p>Plan tasks, organize errands, and set recurring reminders with a
           simple chat. See what is coming up, and review every change before it
           is saved.</p>
-            <p>Sign in or create an account with a provider below. Use the same
+        <p>Sign in or create an account with a provider below. Use the same
           provider each time. Your planner is personal; accounts are kept
           separate.</p>
-            <div id="auth-providers"></div>
-            <section class="landing-details" aria-labelledby="planner-benefits">
-              <h3 id="planner-benefits">A calmer way to plan your day</h3>
-              <ul>
-                <li><strong>Plan in plain language.</strong> Add tasks and errands
+        <div id="auth-providers"></div>
+        <section class="landing-details" aria-labelledby="planner-benefits">
+          <h3 id="planner-benefits">A calmer way to plan your day</h3>
+          <ul>
+            <li><strong>Plan in plain language.</strong> Add tasks and errands
               by chatting about what you need to do.</li>
-                <li><strong>Know what is next.</strong> Check upcoming due dates and
+            <li><strong>Know what is next.</strong> Check upcoming due dates and
               each reminder’s next occurrence.</li>
-                <li><strong>Stay in control.</strong> Review and confirm proposed
+            <li><strong>Stay in control.</strong> Review and confirm proposed
               changes before they are saved.</li>
-              </ul>
-            </section>
-          </section>
-          <section id="chat" hidden>
-            <aside id="upcoming-pane" aria-label="Needs attention" hidden>
-              <div class="pane-heading">
-                <strong>On your radar</strong>
-                <button id="hide-upcoming-pane" class="secondary" type="button"
-                  aria-label="Hide on your radar for this session">✕</button>
-              </div>
-              <ul id="upcoming-preview" class="upcoming-items"></ul>
-              <button id="show-upcoming" class="secondary"
-                type="button">See all upcoming</button>
-            </aside>
-            <div id="empty-chat">
-              <img class="welcome-mark" src="/icon.svg" alt="">
-              <h2>What’s on your mind today?</h2>
-              <p class="hint">Start with a task, an errand, or a plan.</p>
-              <div class="suggestions">
-                <button class="secondary" type="button"
-                  data-prompt="What’s urgent today?">What’s urgent today?</button>
-                <button class="secondary" type="button"
-                  data-prompt="Help me plan my day.">Help me plan my day</button>
-                <button class="secondary" type="button"
-                  data-prompt="Add groceries at ICA, due Friday.">Plan a grocery run</button>
-                <button class="secondary" type="button"
-                  data-prompt="I’m going to ICA. What should I pick up?">What should I pick up?</button>
-              </div>
-            </div>
-            <div id="messages" role="log" aria-live="polite"
-              aria-relevant="additions" aria-label="Conversation"></div>
-            <div class="history-tools">
-              <button id="older-pending" class="secondary"
-                type="button">Find older pending proposals</button>
-              <button id="refresh-chat" class="secondary"
-                type="button">Refresh chat</button>
-            </div>
-            <form id="chat-form" class="compact">
-              <label for="prompt" class="sr-only">Message</label>
-              <div class="composer-input-row">
-                <textarea id="prompt" maxlength="4000" rows="1"
-                  placeholder="Ask anything about your day…"
-                  required></textarea>
-                <button id="composer-toggle" class="secondary composer-toggle"
-                  type="button" aria-expanded="false"
-                  aria-controls="composer-details"
-                  aria-label="Expand message composer"
-                  title="Expand message composer">⤢</button>
-                <button id="send" type="submit">Send ↑</button>
-              </div>
-              <div class="composer-tools">
-                <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
-              </div>
-              <div id="composer-details">
-                <p id="send-status" role="status" aria-live="polite"
-                  aria-atomic="true" hidden></p>
-                <details id="send-error" hidden>
-                  <summary>What went wrong?</summary>
-                  <p id="send-error-details"></p>
-                </details>
-                <p id="timing" class="hint" role="status" hidden></p>
-                <p
-                  class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
-              </div>
-            </form>
+          </ul>
+        </section>
+      </section>
+      <section id="chat" hidden>
+        <aside id="upcoming-pane" aria-label="Needs attention" hidden>
+          <div class="pane-heading">
+            <strong>On your radar</strong>
+            <button id="hide-upcoming-pane" class="secondary" type="button"
+              aria-label="Hide on your radar for this session">✕</button>
+          </div>
+          <ul id="upcoming-preview" class="upcoming-items"></ul>
+          <button id="show-upcoming" class="secondary"
+            type="button">See all upcoming</button>
+        </aside>
+        <div id="empty-chat">
+          <img class="welcome-mark" src="/icon.svg" alt="">
+          <h2>What’s on your mind today?</h2>
+          <p class="hint">Start with a task, an errand, or a plan.</p>
+          <div class="suggestions">
+            <button class="secondary" type="button"
+              data-prompt="What’s urgent today?">What’s urgent today?</button>
+            <button class="secondary" type="button"
+              data-prompt="Help me plan my day.">Help me plan my day</button>
+            <button class="secondary" type="button"
+              data-prompt="Add groceries at ICA, due Friday.">Plan a grocery run</button>
+            <button class="secondary" type="button"
+              data-prompt="I’m going to ICA. What should I pick up?">What should I pick up?</button>
+          </div>
+        </div>
+        <div id="messages" role="log" aria-live="polite"
+          aria-relevant="additions" aria-label="Conversation"></div>
+        <div class="history-tools">
+          <button id="older-pending" class="secondary"
+            type="button">Find older pending proposals</button>
+          <button id="refresh-chat" class="secondary"
+            type="button">Refresh chat</button>
+        </div>
+        <form id="chat-form" class="compact">
+          <label for="prompt" class="sr-only">Message</label>
+          <div class="composer-input-row">
+            <textarea id="prompt" maxlength="4000" rows="1"
+              placeholder="Ask anything about your day…"
+              required></textarea>
+            <button id="composer-toggle" class="secondary composer-toggle"
+              type="button" aria-expanded="false"
+              aria-controls="composer-details"
+              aria-label="Expand message composer"
+              title="Expand message composer">⤢</button>
+            <button id="send" type="submit">Send ↑</button>
+          </div>
+          <div class="composer-tools">
+            <label><input type="checkbox" id="online-search"> Search online <span class="hint">(up to 3 results)</span></label>
+          </div>
+          <div id="composer-details">
+            <p id="send-status" role="status" aria-live="polite"
+              aria-atomic="true" hidden></p>
+            <details id="send-error" hidden>
+              <summary>What went wrong?</summary>
+              <p id="send-error-details"></p>
+            </details>
+            <p id="timing" class="hint" role="status" hidden></p>
             <p
-              class="hint">All task and schedule changes need an inline confirmation.</p>
-          </section>
-          </main>
-          </body>
-          </html>
+              class="hint composer-hint">Enter to send · Shift + Enter for a new line</p>
+          </div>
+        </form>
+        <p
+          class="hint">All task and schedule changes need an inline confirmation.</p>
+      </section>
+    </main>
+  </body>
+</html>
