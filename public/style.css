@@ -41,10 +41,14 @@ header {
   align-items: center;
   gap: .5rem;
 }
-.brand-mark,
+.brand-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+}
 .welcome-mark {
-  color: var(--accent);
-  font-size: 2.2rem;
+  width: 3.5rem;
+  height: 3.5rem;
 }
 .preview-badge {
   padding: .2rem .65rem;

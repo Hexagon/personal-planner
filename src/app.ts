@@ -38,6 +38,7 @@ export function createHandler(
     "/settings.js": ["settings.js", "text/javascript; charset=utf-8"],
     "/upcoming.js": ["upcoming.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
+    "/icon.svg": ["icon.svg", "image/svg+xml"],
   };
   const headers = {
     "Cache-Control": "no-store",
