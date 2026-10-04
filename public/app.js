@@ -36,6 +36,8 @@ let openrouterKey = "";
 const renderedMessages = new Map();
 let pendingCursor = null;
 let pendingUser = null;
+let historyCursor = null;
+let historyInitialized = false;
 function sendStatus(message, tone = "info") {
   const target = element("send-status");
   target.textContent = message;
@@ -123,6 +125,8 @@ function setSession(value) {
     renderedMessages.clear();
     pendingCursor = null;
     pendingUser = null;
+    historyCursor = null;
+    historyInitialized = false;
     element("prompt").value = "";
     setComposerExpanded(false);
     element("online-search").checked = false;
@@ -187,6 +191,7 @@ const actionNames = {
   delete_task: "Delete task",
   set_profile: "Update settings",
   add_reminder: "Add reminder",
+  update_reminder: "Update reminder",
   delete_reminder: "Delete reminder",
 };
 const fieldNames = {
@@ -434,12 +439,40 @@ function render(messages) {
 }
 async function refresh() {
   const upcomingRefresh = upcoming.refresh();
-  const messages = await api("/api/messages");
+  const page = await api("/api/messages?history=true");
   pendingUser?.remove();
   pendingUser = null;
-  render(messages);
+  render(page.messages);
+  if (!historyInitialized) {
+    historyCursor = page.cursor;
+    historyInitialized = true;
+  } else if (!historyCursor && page.cursor) {
+    historyCursor = page.cursor;
+  }
+  element("older-messages").disabled = !historyCursor;
   await upcomingRefresh;
 }
+element("older-messages").onclick = () =>
+  action(async () => {
+    if (!historyCursor) return;
+    const page = await api(
+      `/api/messages?history=true&cursor=${encodeURIComponent(historyCursor)}`,
+    );
+    render(page.messages);
+    historyCursor = page.cursor;
+    element("older-messages").disabled = !historyCursor;
+    notice(
+      historyCursor
+        ? "Older messages loaded. Continue to find earlier conversation."
+        : "All conversation history is loaded.",
+    );
+  }, "Loading older messages…");
+element("latest-messages").onclick = () =>
+  action(async () => {
+    await refresh();
+    scrollToLatest();
+    notice("Showing the latest conversation.");
+  }, "Loading latest messages…");
 element("refresh-chat").onclick = () =>
   action(async () => {
     await refresh();

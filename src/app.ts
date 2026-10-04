@@ -130,6 +130,16 @@ export function createHandler(
             const message = await db.ownedMessage(params.get("id"));
             return json(message ? [message] : []);
           }
+          if (params.has("history")) {
+            if (
+              params.get("history") !== "true" ||
+              [...params.keys()].some((name) =>
+                !["history", "cursor"].includes(name)
+              )
+            ) throw new InputError("Invalid history query");
+            const page = await db.messagePage(params.get("cursor"));
+            return json({ ...page, messages: page.messages.reverse() });
+          }
           if (
             [...params.keys()].some((name) =>
               !["cursor", "pending"].includes(name)

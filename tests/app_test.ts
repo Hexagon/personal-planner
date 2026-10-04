@@ -148,6 +148,81 @@ Deno.test("bounded pending pages expose old inline cards after reload without cr
     assert(page.messages.length === 0);
   });
 });
+
+Deno.test("conversation history pages backward, stays owner scoped, and returns live proposal state", async () => {
+  await withKv(async (kv) => {
+    const other = new Database(kv, otherOwner);
+    for (let n = 1; n <= 205; n++) {
+      const created_at = new Date(Date.UTC(2026, 0, 1, 0, 0, n))
+        .toISOString();
+      const message: RecordData = {
+        id: id(n),
+        user_id: owner,
+        role: n === 1 ? "assistant" : "user",
+        content: `Message ${n}`,
+        proposal: n === 1
+          ? { op: "set_profile", data: { preferences: "Updated" } }
+          : null,
+        action_state: n === 1 ? "pending" : null,
+        created_at,
+      };
+      await kv.set(["planner", "messages", owner, id(n)], message);
+      await kv.set(
+        ["planner", "message_dates", owner, created_at, id(n)],
+        id(n),
+      );
+    }
+    await other.insert("messages", {
+      role: "user",
+      content: "FOREIGN-MESSAGE",
+    });
+    const handler = createHandler(config, kv);
+    const cookie = await sessionCookie();
+    const get = (path: string) =>
+      handler(request(path, undefined, config.origin, cookie));
+    const latest = await (await get("/api/messages?history=true")).json();
+    assert(
+      latest.messages.length === 100 &&
+        latest.messages[0].content === "Message 106" &&
+        latest.messages[99].content === "Message 205" &&
+        latest.cursor,
+    );
+    assert(!JSON.stringify(latest).includes("FOREIGN-MESSAGE"));
+    const older = await (await get(
+      `/api/messages?history=true&cursor=${encodeURIComponent(latest.cursor)}`,
+    )).json();
+    assert(
+      older.messages.length === 100 &&
+        older.messages[0].content === "Message 6" &&
+        older.messages[99].content === "Message 105" &&
+        older.cursor,
+    );
+    const confirm = await get("/api/confirm");
+    assert(confirm.status === 405);
+    const confirmed = await handler(
+      request(
+        "/api/confirm",
+        { message_id: id(1), cancel: false },
+        config.origin,
+        cookie,
+      ),
+    );
+    assert((await confirmed.json()).result === true);
+    const oldest = await (await get(
+      `/api/messages?history=true&cursor=${encodeURIComponent(older.cursor)}`,
+    )).json();
+    assert(
+      oldest.messages.length === 5 &&
+        oldest.messages[0].content === "Message 1" &&
+        oldest.messages[0].action_state === "confirmed" &&
+        oldest.cursor === null,
+    );
+    assert(
+      (await get("/api/messages?history=true&pending=true")).status === 400,
+    );
+  });
+});
+
 function task(n: number, status = "open"): RecordData {
   const timestamp = "2026-10-01T00:00:00.000Z";
   return {
@@ -908,6 +983,111 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
     assert(await db.confirm(deleteReminder[0].id, false));
     assert((await db.list("reminders")).length === 0);
     assert((await dueReminders(kv, "2999-01-01T00:00:00.000Z")).length === 0);
+  });
+});
+
+Deno.test("reminders can be paused, resumed, and rescheduled through retry-safe confirmations", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    const reminderId = id(700);
+    const reminder = {
+      id: reminderId,
+      user_id: owner,
+      description: "Plan the week",
+      cron: "0 9 * * *",
+      timezone: "UTC",
+      next_run: "2026-01-01T09:00:00.000Z",
+      active: true,
+      created_at: "2026-01-01T00:00:00.000Z",
+    };
+    await kv.set(["planner", "reminders", owner, reminderId], reminder);
+    await kv.set(
+      ["planner", "due", reminder.next_run, owner, reminderId],
+      reminderId,
+    );
+    const pause = await db.insert("messages", {
+      role: "assistant",
+      content: "Pause?",
+      proposal: {
+        op: "update_reminder",
+        data: { id: reminderId, active: false },
+      },
+    });
+    assert(await db.confirm(pause[0].id, false));
+    assert(!(await db.confirm(pause[0].id, false)));
+    assert((await db.owned("reminders", reminderId)).active === false);
+    assert((await dueReminders(kv, "2999-01-01T00:00:00.000Z")).length === 0);
+
+    const resume = await db.insert("messages", {
+      role: "assistant",
+      content: "Resume?",
+      proposal: {
+        op: "update_reminder",
+        data: { id: reminderId, active: true },
+      },
+    });
+    assert(await db.confirm(resume[0].id, false));
+    const resumed = await db.owned("reminders", reminderId);
+    assert(
+      resumed.active === true &&
+        Date.parse(String(resumed.next_run)) > Date.now(),
+    );
+    assert((await dueReminders(kv, "2999-01-01T00:00:00.000Z")).length === 1);
+
+    const reschedule = await db.insert("messages", {
+      role: "assistant",
+      content: "Change schedule?",
+      proposal: {
+        op: "update_reminder",
+        data: {
+          id: reminderId,
+          description: "Plan the week",
+          cron: "0 10 * * 1",
+          timezone: "Europe/Stockholm",
+          active: true,
+        },
+      },
+    });
+    assert(await db.confirm(reschedule[0].id, false));
+    const updated = await db.owned("reminders", reminderId);
+    assert(
+      updated.cron === "0 10 * * 1" &&
+        updated.timezone === "Europe/Stockholm" &&
+        Date.parse(String(updated.next_run)) > Date.now(),
+    );
+    const due = await dueReminders(kv, "2999-01-01T00:00:00.000Z");
+    assert(due.length === 1 && due[0].id === reminderId);
+
+    const foreign = {
+      ...reminder,
+      id: id(701),
+      user_id: otherOwner,
+      active: true,
+    };
+    await kv.set(["planner", "reminders", otherOwner, foreign.id], foreign);
+    const foreignUpdate = await db.insert("messages", {
+      role: "assistant",
+      content: "Foreign?",
+      proposal: {
+        op: "update_reminder",
+        data: { id: foreign.id, active: false },
+      },
+    });
+    let rejected = false;
+    try {
+      await db.confirm(foreignUpdate[0].id, false);
+    } catch (error) {
+      rejected = error instanceof InputError;
+    }
+    assert(rejected);
+    assert(
+      (await kv.get<RecordData>([
+        "planner",
+        "reminders",
+        otherOwner,
+        foreign.id,
+      ])).value?.active,
+    );
   });
 });
 

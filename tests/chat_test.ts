@@ -484,6 +484,63 @@ Deno.test("saved settings, reminders and proposal states are authoritative and o
   assert(!pending.modelRequest.includes(secret));
 });
 
+Deno.test("reminder changes resolve saved owners and require an explicit confirmation", async () => {
+  const setup = async (kv: Deno.Kv) => {
+    await kv.set(["planner", "reminders", owner, id(60)], {
+      id: id(60),
+      description: "Sunday planning",
+      cron: "0 18 * * 0",
+      timezone: "Europe/Stockholm",
+      active: false,
+      next_run: "2026-10-11T16:00:00.000Z",
+    });
+    await kv.set(["planner", "reminders", owner, id(61)], {
+      id: id(61),
+      description: "Monday planning",
+      cron: "0 18 * * 1",
+      timezone: "Europe/Stockholm",
+      active: true,
+      next_run: "2026-10-12T16:00:00.000Z",
+    });
+    await kv.set(["planner", "reminders", "other", id(62)], {
+      id: id(62),
+      description: "FOREIGN planning reminder",
+      active: true,
+    });
+  };
+  const resumed = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Resume it?",
+      proposal: {
+        op: "update_reminder",
+        data: { reminder: "Sunday planning", active: true },
+      },
+    },
+  }, "Resume my Sunday planning reminder");
+  assert(resumed.message.action_state === "pending");
+  const proposal = resumed.message.proposal as RecordData;
+  const data = proposal.data as RecordData;
+  assert(data.id === id(60) && data.active === true);
+  assert(data.cron === "0 18 * * 0");
+  assert(!resumed.modelRequest.includes("FOREIGN planning reminder"));
+
+  const ambiguous = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Pause it?",
+      proposal: {
+        op: "update_reminder",
+        data: { reminder: "planning", active: false },
+      },
+    },
+  }, "Pause my planning reminder");
+  assert(ambiguous.message.proposal === null);
+  assert(String(ambiguous.message.content).includes("Which reminder"));
+});
+
 Deno.test("next-page chat retains the exact proposal cursor and safe summaries in truncated history", async () => {
   const kv = await Deno.openKv(":memory:");
   const db = new Database(kv, owner);
