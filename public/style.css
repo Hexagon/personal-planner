@@ -18,9 +18,8 @@ body {
   color: var(--text);
 }
 main {
-  max-width: 900px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 0 .75rem .75rem;
 }
 header,
 .brand,
@@ -32,9 +31,14 @@ header,
   gap: .75rem;
 }
 header {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  min-height: 4.75rem;
+  padding: .5rem 0;
+  background: var(--bg);
   justify-content: space-between;
-  margin-bottom: 1.5rem;
+  margin-bottom: .75rem;
 }
 .header-actions {
   display: flex;
@@ -265,7 +269,7 @@ label {
 }
 #upcoming-pane {
   position: sticky;
-  top: .75rem;
+  top: 5rem;
   z-index: 1;
   max-height: 30vh;
   overflow: auto;
@@ -416,17 +420,18 @@ dd {
 }
 #chat-form {
   position: sticky;
-  bottom: .75rem;
+  bottom: .5rem;
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 1.25rem;
-  padding: .75rem;
+  padding: .35rem;
   box-shadow: 0 8px 30px #0000000d;
 }
 .composer-input-row {
   display: flex;
-  align-items: stretch;
-  gap: .5rem;
+  align-items: flex-end;
+  gap: .35rem;
 }
 .composer-input-row textarea {
   flex: 1;
@@ -438,13 +443,18 @@ dd {
 }
 .composer-toggle {
   flex: 0 0 auto;
-  padding: .5rem .75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: .5rem;
+}
+#send {
+  flex: 0 0 auto;
 }
 #chat-form.compact .composer-input-row textarea {
-  height: 2.9rem;
-  min-height: 2.9rem;
-  max-height: 2.9rem;
-  padding: .45rem .7rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
+  padding: .45rem .5rem;
   resize: none;
 }
 #chat-form.compact #composer-details {
@@ -520,7 +530,7 @@ dd {
 }
 @media (max-width: 600px) {
   main {
-    padding: 1rem .75rem;
+    padding: 0 .5rem .5rem;
   }
   .brand .hint {
     display: none;
@@ -538,11 +548,5 @@ dd {
   }
   .composer-tools .hint {
     display: none;
-  }
-  .composer-input-row {
-    gap: .35rem;
-  }
-  .composer-input-row button {
-    padding: .5rem .65rem;
   }
 }

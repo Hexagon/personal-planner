@@ -630,7 +630,8 @@ element("chat-form").onsubmit = (event) => {
     const thinking = temporaryMessage("assistant", "Thinking", "thinking");
     setComposerExpanded(true);
     sendStatus("Sending your message. Planner is thinking…");
-    element("send").textContent = "Sending…";
+    element("send").setAttribute("aria-label", "Sending message");
+    element("send").title = "Sending message";
     scrollToLatest();
     let received = false;
     element("timing").hidden = true;
@@ -692,7 +693,8 @@ element("chat-form").onsubmit = (event) => {
       }
     } finally {
       thinking.remove();
-      element("send").textContent = "Send ↑";
+      element("send").setAttribute("aria-label", "Send message");
+      element("send").title = "Send message";
       if (session) {
         scrollToLatest();
         element("prompt").disabled = false;
