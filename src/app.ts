@@ -7,9 +7,33 @@ import {
 import { authenticate, AuthError, handleAuth } from "./auth.ts";
 import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
+import { upcoming } from "./upcoming.ts";
 import { InputError, object, text } from "./validation.ts";
 
-export function createHandler(config: Config, kv: Deno.Kv) {
+function withoutProposalHistory(message: Record<string, unknown>) {
+  return message.proposal
+    ? {
+      ...message,
+      content:
+        "A previous proposal is no longer available. Ask again if it is still needed.",
+      proposal: null,
+      action_state: null,
+    }
+    : message;
+}
+
+export function isPreviewDeployment(
+  isDenoDeploy: boolean,
+  appEnvironment: string | undefined,
+): boolean {
+  return isDenoDeploy && appEnvironment !== "production";
+}
+
+export function createHandler(
+  config: Config,
+  kv: Deno.Kv,
+  preview = false,
+) {
   const active = new Set<string>();
   const oauthCallbacks = new Set([
     ...(config.googleClientId ? ["/auth/callback/google"] : []),
@@ -24,7 +48,10 @@ export function createHandler(config: Config, kv: Deno.Kv) {
     "/": ["index.html", "text/html; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/settings.js": ["settings.js", "text/javascript; charset=utf-8"],
+    "/upcoming.js": ["upcoming.js", "text/javascript; charset=utf-8"],
+    "/history.js": ["history.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
+    "/icon.svg": ["icon.svg", "image/svg+xml"],
   };
   const headers = {
     "Cache-Control": "no-store",
@@ -69,6 +96,7 @@ export function createHandler(config: Config, kv: Deno.Kv) {
       if (request.method === "GET" && path === "/api/config") {
         return json({
           schedulerEnabled: true,
+          preview,
           model: config.model,
           models: availableModels,
           serverKeyAvailable: !!config.openrouterKey,
@@ -82,10 +110,16 @@ export function createHandler(config: Config, kv: Deno.Kv) {
           ],
         });
       }
-      if (!["/api/messages", "/api/chat", "/api/confirm"].includes(path)) {
+      if (
+        !["/api/messages", "/api/upcoming", "/api/chat", "/api/confirm"]
+          .includes(path)
+      ) {
         return json({ error: "Not found" }, 404);
       }
-      if (request.method !== (path === "/api/messages" ? "GET" : "POST")) {
+      if (
+        request.method !==
+          (["/api/messages", "/api/upcoming"].includes(path) ? "GET" : "POST")
+      ) {
         return json({ error: "Method not allowed" }, 405);
       }
       if (
@@ -94,6 +128,12 @@ export function createHandler(config: Config, kv: Deno.Kv) {
       ) return json({ error: "Origin not allowed" }, 403);
       const userId = await authenticate(request, config);
       const db = new Database(kv, userId);
+      if (path === "/api/upcoming") {
+        if (new URL(request.url).searchParams.size) {
+          throw new InputError("Upcoming does not accept query parameters");
+        }
+        return json(await upcoming(db));
+      }
       if (path === "/api/messages") {
         const params = new URL(request.url).searchParams;
         if (params.size) {
@@ -104,19 +144,24 @@ export function createHandler(config: Config, kv: Deno.Kv) {
             const message = await db.ownedMessage(params.get("id"));
             return json(message ? [message] : []);
           }
-          if (
-            [...params.keys()].some((name) =>
-              !["cursor", "pending"].includes(name)
-            ) ||
-            (params.has("pending") && params.get("pending") !== "true")
-          ) throw new InputError("Invalid message query");
-          const page = await db.messagePage(
-            params.get("cursor"),
-            params.get("pending") === "true",
-          );
-          return json({ ...page, messages: page.messages.reverse() });
+          if (params.has("history")) {
+            if (
+              params.get("history") !== "true" ||
+              [...params.keys()].some((name) =>
+                !["history", "cursor"].includes(name)
+              )
+            ) throw new InputError("Invalid history query");
+            const page = await db.messagePage(params.get("cursor"));
+            return json({
+              ...page,
+              messages: page.messages.map(withoutProposalHistory).reverse(),
+            });
+          }
+          throw new InputError("Invalid message query");
         }
-        return json((await db.list("messages")).reverse());
+        return json(
+          (await db.list("messages")).map(withoutProposalHistory).reverse(),
+        );
       }
       if (
         !request.headers.get("Content-Type")?.startsWith("application/json")

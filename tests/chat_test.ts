@@ -118,6 +118,21 @@ Deno.test("reasoning uses OpenRouter controls and timing is not persisted", asyn
   }
 });
 
+Deno.test("system instructions allow Markdown in ordinary replies", async () => {
+  await run({
+    tasks: [],
+    output: { reply: "Hello", proposal: null },
+    onModel: (request) => {
+      const system = String(
+        (request.messages as RecordData[])[0].content,
+      );
+      assert(system.includes("not wrapped in Markdown"));
+      assert(system.includes("Markdown formatting in ordinary text replies"));
+      assert(system.includes("renders Markdown in chat history"));
+    },
+  }, "Hello");
+});
+
 Deno.test("invalid provider responses and transport failures never save assistant proposals", async () => {
   const original = globalThis.fetch;
   const valid = JSON.stringify({ reply: "Hello", proposal: null });
@@ -357,6 +372,23 @@ Deno.test("lists and completions are rendered from saved records", async () => {
   const content = String(list.message.content);
   assert(content.includes("Milk") && content.includes("Router"));
   assert(!content.includes("caviar") && !content.includes("Lawn"));
+  const datedList = await run({
+    tasks: [
+      ...tasks,
+      task(4, {
+        name: "Bread",
+        location_name: "ICA",
+        due_date: "2026-01-02",
+      }),
+    ],
+    output: {
+      reply: "These groceries might help.",
+      proposal: null,
+      task_query: { location_name: "ICA", due_date: "2026-01-02" },
+    },
+  }, "I’m going to ICA tomorrow. What should I pick up?");
+  assert(String(datedList.message.content).includes("Bread"));
+  assert(!String(datedList.message.content).includes("Milk"));
   const done = await run({
     tasks,
     output: {
@@ -381,7 +413,7 @@ Deno.test("lists and completions are rendered from saved records", async () => {
   );
 });
 
-Deno.test("saved settings, reminders and proposal states are authoritative and owner scoped", async () => {
+Deno.test("saved settings and reminders are authoritative and owner scoped", async () => {
   const setup = async (kv: Deno.Kv, db: Database) => {
     await kv.set(["planner", "profiles", owner], {
       timezone: "Europe/Stockholm",
@@ -424,7 +456,16 @@ Deno.test("saved settings, reminders and proposal states are authoritative and o
         )[1],
       );
       assert(saved.preferences.length === 4000);
-      assert(saved.proposal_states[0].state === "pending");
+      assert(!("proposal_states" in saved));
+      const history = request.messages as RecordData[];
+      assert(
+        history.some((message) =>
+          String(message.content).includes(
+            "previous proposal is no longer available",
+          )
+        ),
+      );
+      assert(!JSON.stringify(history).includes("Pending car"));
       assert(!JSON.stringify(saved).includes(secret));
     },
   }, "What are my saved preferences?");
@@ -442,109 +483,89 @@ Deno.test("saved settings, reminders and proposal states are authoritative and o
   assert(String(reminders.message.content).includes("active: false"));
   assert(String(reminders.message.content).includes(id(50)));
   assert(String(reminders.message.content).includes("2026-10-11"));
-  const pending = await run({
-    tasks: [],
-    setup,
-    output: { reply: "Saved already", proposal_query: {} },
-  }, "What needs confirmation?");
-  assert((pending.message.related_messages as unknown[]).length === 1);
-  assert(String(pending.message.content).includes("pending"));
-  assert(!pending.modelRequest.includes(secret));
 });
 
-Deno.test("next-page chat retains the exact proposal cursor and safe summaries in truncated history", async () => {
-  const kv = await Deno.openKv(":memory:");
-  const db = new Database(kv, owner);
-  const original = globalThis.fetch;
-  let first: RecordData | undefined;
-  let requests = 0;
-  try {
-    for (let n = 1; n <= 101; n++) {
-      const created_at = new Date(Date.UTC(2026, 0, 1, 0, 0, n))
-        .toISOString();
-      const message = {
-        id: id(n),
-        role: "assistant",
-        content: "Review this proposal.",
-        created_at,
-        action_state: "pending",
-        proposal: {
-          op: "add_task",
-          data: {
-            name: "N".repeat(80),
-            short_description: "Safe summary",
-            full_description: secret.repeat(300),
-          },
+Deno.test("reminder changes resolve saved owners and require an explicit confirmation", async () => {
+  const setup = async (kv: Deno.Kv) => {
+    await kv.set(["planner", "reminders", owner, id(60)], {
+      id: id(60),
+      description: "Sunday planning",
+      cron: "0 18 * * 0",
+      timezone: "Europe/Stockholm",
+      active: false,
+      next_run: "2026-10-11T16:00:00.000Z",
+    });
+    await kv.set(["planner", "reminders", owner, id(61)], {
+      id: id(61),
+      description: "Monday planning",
+      cron: "0 18 * * 1",
+      timezone: "Europe/Stockholm",
+      active: true,
+      next_run: "2026-10-12T16:00:00.000Z",
+    });
+    await kv.set(["planner", "reminders", "other", id(62)], {
+      id: id(62),
+      description: "FOREIGN planning reminder",
+      active: true,
+    });
+  };
+  const resumed = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Resume it?",
+      proposal: {
+        op: "update_reminder",
+        data: { reminder: "Sunday planning", active: true },
+      },
+    },
+  }, "Resume my Sunday planning reminder");
+  assert(resumed.message.action_state === "pending");
+  const proposal = resumed.message.proposal as RecordData;
+  const data = proposal.data as RecordData;
+  assert(data.id === id(60) && data.active === true);
+  assert(data.cron === undefined && data.timezone === undefined);
+  assert(!resumed.modelRequest.includes("FOREIGN planning reminder"));
+
+  const ambiguous = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Pause it?",
+      proposal: {
+        op: "update_reminder",
+        data: { reminder: "planning", active: false },
+      },
+    },
+  }, "Pause my planning reminder");
+  assert(ambiguous.message.proposal === null);
+  assert(String(ambiguous.message.content).includes("Which reminder"));
+});
+
+Deno.test("historical proposals are unavailable in model context", async () => {
+  const { modelRequest } = await run({
+    tasks: [],
+    history: [{
+      role: "assistant",
+      content: "Add an old task? Confirm below.",
+      proposal: {
+        op: "add_task",
+        data: {
+          name: "Old proposal",
+          short_description: "Old task",
+          full_description: secret,
         },
-      };
-      await kv.atomic()
-        .set(["planner", "messages", owner, id(n)], message)
-        .set(["planner", "message_dates", owner, created_at, id(n)], id(n))
-        .commit();
-    }
-    globalThis.fetch = (_input, init) => {
-      const request = JSON.parse(String(init?.body));
-      assert(!JSON.stringify(request).includes(secret));
-      requests++;
-      let cursor = null;
-      if (requests === 2) {
-        assert(first);
-        const history = request.messages.slice(2, -1) as RecordData[];
-        const previous = history.find((message) =>
-          message.role === "assistant" &&
-          String(message.content).startsWith("More history remains.")
-        );
-        assert(previous, "The safe proposal reply must not be masked");
-        assert(String(previous.content).length === 4000);
-        cursor = String(previous.content).split("Next cursor: ")[1]
-          .split("\n")[0];
-        assert(cursor === first.pending_cursor, "Keep the exact cursor");
-        assert(String(previous.content).includes("N".repeat(80)));
-        assert(String(previous.content).includes("pending"));
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify({
-          choices: [{
-            message: {
-              content: JSON.stringify({
-                reply: "Here.",
-                proposal_query: { cursor },
-              }),
-            },
-          }],
-        })),
-      );
-    };
-    first = await chat(db, config, "Show pending proposals");
-    const firstRows = first.related_messages as RecordData[];
-    assert(firstRows.length === 99);
-    assert(
-      first.pending_cursor === JSON.stringify({
-        created_at: "2026-01-01T00:00:03.000Z",
-        id: id(3),
-      }),
-    );
-    assert(String(first.content).length > 4000);
-    assert(String(first.content).length <= 20000);
-    assert(!String(first.content).includes(secret));
-    const second = await chat(db, config, "Next page");
-    const secondRows = second.related_messages as RecordData[];
-    assert(requests === 2);
-    assert(
-      JSON.stringify(secondRows.map((row) => row.id)) ===
-        JSON.stringify([id(2), id(1)]),
-    );
-    assert(second.pending_cursor === null);
-    assert(
-      !secondRows.some((row) =>
-        firstRows.some((previous) => previous.id === row.id)
-      ),
-    );
-    assert(!String(second.content).includes(secret));
-  } finally {
-    globalThis.fetch = original;
-    await kv.close();
-  }
+      },
+    }],
+    output: {
+      reply: "I can’t see that old proposal. Ask me to propose it again.",
+    },
+  }, "What was that old proposal?");
+  assert(!modelRequest.includes("Old proposal"));
+  assert(!modelRequest.includes(secret));
+  assert(
+    modelRequest.includes("A previous proposal is no longer available."),
+  );
 });
 
 Deno.test("update/delete resolve finished tasks by user reference and clarify ambiguity", async () => {
@@ -620,7 +641,6 @@ Deno.test("saved query shapes and one-operation boundary reject malformed model 
       { task_detail: { task: "Milk", extra: true } },
       { task_query: { urgency: "soon" } },
       { task_query: { urgency: false } },
-      { proposal_query: {}, settings_query: {} },
       {
         proposal: { op: "set_profile", data: { timezone: "UTC" } },
         reminder_query: {},
@@ -634,9 +654,9 @@ Deno.test("saved query shapes and one-operation boundary reject malformed model 
   await rejects(
     run({
       tasks: [],
-      output: { reply: "Hi", settings_query: {}, proposal_query: {} },
+      output: { reply: "Hi", proposal_query: {} },
     }, "Show settings"),
-    "Use at most one proposal or query",
+    "Historical proposals are not available",
   );
 });
 
@@ -743,17 +763,4 @@ Deno.test("reminder targets clarify unknown/ambiguous references and reject fore
       id(50),
   );
   assert(selected.message.action_state === "pending");
-  const foreignProposal = await run({
-    tasks: [],
-    setup: async (kv) => {
-      await kv.set(["planner", "messages", "other", id(53)], {
-        id: id(53),
-        proposal: { op: "set_profile", data: { preferences: "Foreign" } },
-        action_state: "confirmed",
-      });
-    },
-    output: { reply: "Confirmed", proposal_query: { id: id(53) } },
-  }, "Was that confirmed?");
-  assert(String(foreignProposal.message.content).includes("No proposal"));
-  assert((foreignProposal.message.related_messages as unknown[]).length === 0);
 });

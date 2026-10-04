@@ -18,9 +18,8 @@ body {
   color: var(--text);
 }
 main {
-  max-width: 900px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 0 .75rem .75rem;
 }
 header,
 .brand,
@@ -32,13 +31,36 @@ header,
   gap: .75rem;
 }
 header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  min-height: 4.75rem;
+  padding: .5rem 0;
+  background: var(--bg);
   justify-content: space-between;
-  margin-bottom: 1.5rem;
+  margin-bottom: .75rem;
 }
-.brand-mark,
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.brand-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+}
 .welcome-mark {
-  color: var(--accent);
-  font-size: 2.2rem;
+  width: 3.5rem;
+  height: 3.5rem;
+}
+.preview-badge {
+  padding: .2rem .65rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 600;
 }
 h1 {
   font-size: 1.15rem;
@@ -75,6 +97,18 @@ button.secondary {
   background: var(--surface);
   color: var(--muted);
   border-color: var(--line);
+}
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: .5rem;
+  border-radius: 50%;
+}
+.icon-button svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 button:disabled {
   opacity: .55;
@@ -130,16 +164,133 @@ label {
   padding: .45rem;
 }
 .key-setup,
-.privacy,
-#settings {
+.privacy {
   border: 1px solid var(--line);
   border-radius: 1rem;
   padding: 1rem;
   margin: 1rem 0;
   background: var(--surface);
 }
-#settings > summary {
+#settings,
+#upcoming {
+  position: static;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: none;
+}
+#settings > summary,
+#upcoming > summary {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.35rem;
+  list-style: none;
+}
+#settings > summary::-webkit-details-marker,
+#upcoming > summary::-webkit-details-marker {
+  display: none;
+}
+#settings > summary::marker,
+#upcoming > summary::marker {
+  content: "";
+}
+#settings > summary:hover,
+#upcoming > summary:hover {
+  background: var(--tint);
+}
+.settings-panel,
+.upcoming-panel {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + .5rem);
+  right: 0;
+  width: min(34rem, 100%);
+  max-height: min(75vh, 48rem);
+  overflow: auto;
+  padding: .5rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 12px 36px #00000024;
+}
+#upcoming > summary {
+  position: relative;
+}
+#upcoming-badge {
+  position: absolute;
+  top: -.35rem;
+  right: -.35rem;
+  min-width: 1.25rem;
+  padding: 0 .25rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: .65rem;
+  font-weight: 700;
+}
+.pane-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.pane-heading h2 {
+  margin: .5rem 0;
+  font-size: 1.2rem;
+}
+.pane-heading button {
+  padding: .25rem .6rem;
+}
+.upcoming-panel h3 {
+  font-size: .85rem;
+  color: var(--accent);
+  margin-bottom: .5rem;
+}
+.upcoming-items {
+  list-style: none;
+  padding: 0;
+  margin: .5rem 0;
+}
+.upcoming-item {
+  display: grid;
+  gap: .1rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.upcoming-item:last-child {
+  border-bottom: 0;
+}
+.upcoming-title {
   font-weight: 600;
+  font-size: .9rem;
+}
+#upcoming-pane {
+  position: sticky;
+  top: 5rem;
+  z-index: 1;
+  max-height: 30vh;
+  overflow: auto;
+  padding: .65rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 8px 30px #0000000d;
+}
+#upcoming-pane > button {
+  padding: .25rem .6rem;
+  font-size: .8rem;
+}
+#upcoming-preview .upcoming-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #settings .chat-toolbar {
   margin-top: .75rem;
@@ -186,10 +337,48 @@ article strong {
   color: var(--accent);
   font-size: .8rem;
 }
-article p {
-  white-space: pre-wrap;
+.message-content {
   overflow-wrap: anywhere;
-  margin: .5rem 0 0;
+}
+.message-content > :first-child {
+  margin-top: .5rem;
+}
+.message-content p,
+.message-content ul,
+.message-content ol,
+.message-content blockquote,
+.message-content pre {
+  margin: .5rem 0;
+}
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  margin: .75rem 0 .25rem;
+  line-height: 1.3;
+}
+.message-content pre {
+  overflow-x: auto;
+  padding: .75rem;
+  border-radius: .6rem;
+  background: var(--surface);
+}
+.message-content code {
+  padding: .1rem .25rem;
+  border-radius: .25rem;
+  background: var(--surface);
+  font-family: ui-monospace, monospace;
+}
+.message-content pre code {
+  padding: 0;
+  background: none;
+}
+.message-content blockquote {
+  padding-left: .75rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
 }
 article button {
   margin: .75rem .5rem 0 0;
@@ -235,18 +424,45 @@ dd {
 }
 #chat-form {
   position: sticky;
-  bottom: .75rem;
+  bottom: .5rem;
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 1.25rem;
-  padding: .75rem;
+  padding: .35rem;
   box-shadow: 0 8px 30px #0000000d;
 }
-textarea {
+.composer-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: .35rem;
+}
+.composer-input-row textarea {
+  flex: 1;
+  min-width: 0;
   resize: vertical;
   min-height: 80px;
   max-height: 240px;
   border: 0;
+}
+.composer-toggle {
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: .5rem;
+}
+#send {
+  flex: 0 0 auto;
+}
+#chat-form.compact .composer-input-row textarea {
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
+  padding: .45rem .5rem;
+  resize: none;
+}
+#chat-form.compact #composer-details {
+  display: none;
 }
 .composer-tools {
   justify-content: space-between;
@@ -268,12 +484,27 @@ textarea {
   display: none;
 }
 #notice,
-#send-status {
+#send-status,
+#send-error {
   padding: .75rem 1rem;
   border-radius: .75rem;
   background: var(--tint);
   font-size: .85rem;
   overflow-wrap: anywhere;
+}
+#send-status {
+  margin: .5rem 0 0;
+}
+#send-error {
+  margin-top: .5rem;
+}
+#send-error summary {
+  color: inherit;
+  font-weight: 600;
+}
+#send-error p {
+  margin: .5rem 0 0;
+  white-space: pre-wrap;
 }
 [data-tone="error"] {
   color: light-dark(#9d2336, #ffadb9);
@@ -303,7 +534,7 @@ textarea {
 }
 @media (max-width: 600px) {
   main {
-    padding: 1rem .75rem;
+    padding: 0 .5rem .5rem;
   }
   .brand .hint {
     display: none;

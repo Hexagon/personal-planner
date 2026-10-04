@@ -6,7 +6,12 @@ import {
   text,
 } from "../validation.ts";
 import { groupByLocation, locationKey } from "./geo-planner.ts";
-import { urgencies, type Urgency, urgency } from "./task-tracker.ts";
+import {
+  prioritize,
+  urgencies,
+  type Urgency,
+  urgency,
+} from "./task-tracker.ts";
 
 const listLimit = 300;
 
@@ -35,7 +40,7 @@ export function taskList(
   const query = object(input);
   if (
     Object.keys(query).some((field) =>
-      !["status", "location_name", "urgency"].includes(field)
+      !["status", "location_name", "urgency", "due_date"].includes(field)
     )
   ) throw new InputError("Invalid task query field");
   const status = query.status ?? "open";
@@ -45,6 +50,18 @@ export function taskList(
   const location = query.location_name == null
     ? null
     : text(query.location_name, 100);
+  const dueDate = query.due_date == null ? null : text(query.due_date, 10);
+  const parsedDueDate = dueDate === null
+    ? null
+    : new Date(`${dueDate}T00:00:00.000Z`);
+  if (
+    dueDate !== null &&
+    (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
+      Number.isNaN(parsedDueDate?.getTime()) ||
+      parsedDueDate?.toISOString().slice(0, 10) !== dueDate)
+  ) {
+    throw new InputError("Invalid due date filter");
+  }
   const wanted = query.urgency == null ? null : query.urgency;
   if (
     wanted !== null &&
@@ -59,12 +76,15 @@ export function taskList(
     task.status === status &&
     (!location ||
       locationKey(task.location_name) === locationKey(location)) &&
+    (!dueDate || task.due_date === dueDate) &&
     (!selectedUrgencies ||
       selectedUrgencies.includes(urgency(task.due_date, today)))
   );
-  const shown = matching.slice(0, listLimit);
+  const ordered = status === "open" ? prioritize(matching, today) : matching;
+  const shown = ordered.slice(0, listLimit);
   const filters = [
     location ? `at ${location}` : null,
+    dueDate ? `due ${dueDate}` : null,
     selectedUrgencies ? `urgency ${selectedUrgencies.join("/")}` : null,
   ].filter(Boolean).join(", ");
   const heading = `${status[0].toUpperCase()}${status.slice(1)} tasks${

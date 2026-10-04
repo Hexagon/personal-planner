@@ -1,4 +1,4 @@
-export const CONSENT_VERSION = 1;
+export const CONSENT_VERSION = 2;
 const REASONING = ["off", "high", "default"];
 
 export async function verifyChatSession(

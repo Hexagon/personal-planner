@@ -1,4 +1,6 @@
 import { createSettings, verifyChatSession } from "./settings.js";
+import { createUpcoming } from "./upcoming.js";
+import { reconcileHistory } from "./history.js";
 
 const element = (id) => document.getElementById(id);
 const notice = (message, tone = "info") => {
@@ -16,6 +18,7 @@ try {
   notice("Could not load the app. Refresh the page to try again.", "error");
   throw new Error("App configuration unavailable");
 }
+element("preview-badge").hidden = !config.preview;
 for (const model of config.models) {
   const option = document.createElement("option");
   option.value = model.id;
@@ -24,6 +27,7 @@ for (const model of config.models) {
 }
 element("model").value = config.model;
 let session = null;
+const upcoming = createUpcoming({ api, getOwner: () => session?.user.id });
 let busy = false;
 const settings = createSettings({
   models: config.models.map((model) => model.id),
@@ -31,14 +35,47 @@ const settings = createSettings({
 });
 let openrouterKey = "";
 const renderedMessages = new Map();
-let pendingCursor = null;
 let pendingUser = null;
+let historyCursor = null;
+let historyInitialized = false;
+const historyCoverage = new Set();
 function sendStatus(message, tone = "info") {
   const target = element("send-status");
   target.textContent = message;
   target.hidden = !message;
   target.dataset.tone = tone;
   target.setAttribute("role", tone === "error" ? "alert" : "status");
+  if (tone !== "error") {
+    element("send-error").hidden = true;
+    element("send-error").open = false;
+    element("send-error-details").textContent = "";
+  }
+}
+function setComposerExpanded(expanded) {
+  const form = element("chat-form");
+  const toggle = element("composer-toggle");
+  form.classList.toggle("compact", !expanded);
+  element("prompt").rows = expanded ? 3 : 1;
+  toggle.textContent = expanded ? "⤡" : "⤢";
+  toggle.setAttribute("aria-expanded", String(expanded));
+  const label = `${expanded ? "Collapse" : "Expand"} message composer`;
+  toggle.setAttribute("aria-label", label);
+  toggle.title = label;
+}
+element("composer-toggle").onclick = () =>
+  setComposerExpanded(element("chat-form").classList.contains("compact"));
+function requestFailure(error) {
+  sendStatus(
+    "Couldn’t complete the request. Expand for details. Your draft is kept; check the conversation before retrying.",
+    "error",
+  );
+  const status = Number.isInteger(error?.status)
+    ? `HTTP ${error.status}. `
+    : "";
+  element("send-error-details").textContent = `${status}${
+    error?.message ?? "Unknown request error."
+  }`.slice(0, 1000);
+  element("send-error").hidden = false;
 }
 function scrollToLatest() {
   element("chat-form").scrollIntoView({ block: "end" });
@@ -79,15 +116,20 @@ function setSession(value) {
   element("remember-key").checked = saved.keyMode === "device";
   element("login").hidden = !!session;
   element("chat").hidden = !session;
+  element("settings").hidden = !session;
   element("logout").hidden = !session;
   if (previousOwner !== session?.user.id) {
+    upcoming.reset();
     element("openrouter-key").value = "";
     updateKeyStatus();
     element("messages").replaceChildren();
     renderedMessages.clear();
-    pendingCursor = null;
     pendingUser = null;
+    historyCursor = null;
+    historyInitialized = false;
+    historyCoverage.clear();
     element("prompt").value = "";
+    setComposerExpanded(false);
     element("online-search").checked = false;
     element("timing").textContent = "";
     element("timing").hidden = true;
@@ -133,11 +175,13 @@ async function api(path, body) {
     );
   }
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       typeof result?.error === "string"
         ? result.error
         : "Request failed. Refresh chat before retrying.",
     );
+    error.status = response.status;
+    throw error;
   }
   return result;
 }
@@ -148,6 +192,7 @@ const actionNames = {
   delete_task: "Delete task",
   set_profile: "Update settings",
   add_reminder: "Add reminder",
+  update_reminder: "Update reminder",
   delete_reminder: "Delete reminder",
 };
 const fieldNames = {
@@ -189,6 +234,133 @@ function describeProposal(proposal) {
   }
   return list;
 }
+function renderInline(parent, source) {
+  const syntax =
+    /\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/g;
+  let cursor = 0;
+  for (const match of source.matchAll(syntax)) {
+    const index = match.index ?? 0;
+    parent.append(document.createTextNode(source.slice(cursor, index)));
+    if (match[1] !== undefined) {
+      let url;
+      try {
+        url = new URL(match[2], location.href);
+      } catch {
+        url = null;
+      }
+      if (url && ["http:", "https:", "mailto:"].includes(url.protocol)) {
+        const link = document.createElement("a");
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = match[1];
+        parent.append(link);
+      } else {
+        parent.append(document.createTextNode(match[0]));
+      }
+    } else {
+      const tag = match[4] !== undefined
+        ? "code"
+        : match[5] !== undefined || match[6] !== undefined
+        ? "strong"
+        : match[7] !== undefined
+        ? "del"
+        : "em";
+      const node = document.createElement(tag);
+      node.textContent = match[4] ?? match[5] ?? match[6] ?? match[7] ??
+        match[8] ?? match[9];
+      parent.append(node);
+    }
+    cursor = index + match[0].length;
+  }
+  parent.append(document.createTextNode(source.slice(cursor)));
+}
+function renderMarkdown(parent, value) {
+  const lines = String(value ?? "").split(/\r?\n/);
+  const isBlockStart = (line) =>
+    /^\s*```/.test(line) ||
+    /^#{1,6}\s+/.test(line) ||
+    /^\s*(?:[-+*]|\d+[.)])\s+/.test(line) ||
+    /^\s*>\s?/.test(line) ||
+    /^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line);
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index++;
+      continue;
+    }
+    if (/^\s*```/.test(line)) {
+      const code = [];
+      index++;
+      while (index < lines.length && !/^\s*```/.test(lines[index])) {
+        code.push(lines[index++]);
+      }
+      if (index < lines.length) index++;
+      const pre = document.createElement("pre");
+      const block = document.createElement("code");
+      block.textContent = code.join("\n");
+      pre.append(block);
+      parent.append(pre);
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (heading) {
+      const title = document.createElement(`h${heading[1].length}`);
+      renderInline(title, heading[2]);
+      parent.append(title);
+      index++;
+      continue;
+    }
+    if (/^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line)) {
+      parent.append(document.createElement("hr"));
+      index++;
+      continue;
+    }
+    const item = /^\s*([-+*]|\d+[.)])\s+(.+)$/.exec(line);
+    if (item) {
+      const ordered = /^\d/.test(item[1]);
+      const list = document.createElement(ordered ? "ol" : "ul");
+      const marker = /^\s*([-+*]|\d+[.)])\s+(.+)$/;
+      while (index < lines.length) {
+        const entry = marker.exec(lines[index]);
+        if (!entry || /^\d/.test(entry[1]) !== ordered) break;
+        const li = document.createElement("li");
+        renderInline(li, entry[2]);
+        list.append(li);
+        index++;
+      }
+      parent.append(list);
+      continue;
+    }
+    if (/^\s*>\s?/.test(line)) {
+      const quote = document.createElement("blockquote");
+      const paragraph = document.createElement("p");
+      while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+        if (paragraph.hasChildNodes()) {
+          paragraph.append(document.createElement("br"));
+        }
+        renderInline(paragraph, lines[index++].replace(/^\s*>\s?/, ""));
+      }
+      quote.append(paragraph);
+      parent.append(quote);
+      continue;
+    }
+    const paragraphLines = [line];
+    index++;
+    while (
+      index < lines.length && lines[index].trim() &&
+      !isBlockStart(lines[index])
+    ) {
+      paragraphLines.push(lines[index++]);
+    }
+    const paragraph = document.createElement("p");
+    paragraphLines.forEach((paragraphLine, lineIndex) => {
+      if (lineIndex) paragraph.append(document.createElement("br"));
+      renderInline(paragraph, paragraphLine);
+    });
+    parent.append(paragraph);
+  }
+}
 function render(messages) {
   const container = element("messages");
   for (const message of messages) {
@@ -205,8 +377,9 @@ function render(messages) {
     article.className = message.role === "user" ? "user" : "assistant";
     const heading = document.createElement("strong");
     heading.textContent = message.role === "user" ? "You" : "Planner";
-    const content = document.createElement("p");
-    content.textContent = message.content;
+    const content = document.createElement("div");
+    content.className = "message-content";
+    renderMarkdown(content, message.content);
     article.append(heading, content);
     if (message.proposal) {
       article.append(describeProposal(message.proposal));
@@ -216,6 +389,7 @@ function render(messages) {
           button.textContent = cancel ? "Cancel" : "Confirm";
           button.onclick = () =>
             action(async () => {
+              sendStatus("");
               const result = await api("/api/confirm", {
                 message_id: message.id,
                 cancel,
@@ -264,36 +438,72 @@ function render(messages) {
   }
   element("empty-chat").hidden = renderedMessages.size > 0 || !!pendingUser;
 }
+function expirePendingProposalCards() {
+  for (const article of renderedMessages.values()) {
+    if (article.dataset.actionState !== "pending") continue;
+    article.replaceChildren();
+    const heading = document.createElement("strong");
+    heading.textContent = "Planner";
+    const content = document.createElement("p");
+    content.textContent =
+      "This proposal is no longer available. Ask again if it is still needed.";
+    article.append(heading, content);
+    article.dataset.actionState = "expired";
+  }
+}
 async function refresh() {
-  const messages = await api("/api/messages");
+  const upcomingRefresh = upcoming.refresh();
+  const page = await api("/api/messages?history=true");
   pendingUser?.remove();
   pendingUser = null;
-  render(messages);
+  const history = await reconcileHistory(
+    page,
+    historyInitialized,
+    historyCursor,
+    historyCoverage,
+    (cursor) =>
+      api(`/api/messages?history=true&cursor=${encodeURIComponent(cursor)}`),
+  );
+  render(history.messages);
+  for (const message of history.messages) historyCoverage.add(message.id);
+  historyCursor = history.cursor;
+  historyInitialized = true;
+  element("older-messages").disabled = !historyCursor;
+  await upcomingRefresh;
 }
+element("older-messages").onclick = () =>
+  action(async () => {
+    if (!historyCursor) return;
+    const page = await api(
+      `/api/messages?history=true&cursor=${encodeURIComponent(historyCursor)}`,
+    );
+    render(page.messages);
+    for (const message of page.messages) historyCoverage.add(message.id);
+    historyCursor = page.cursor;
+    element("older-messages").disabled = !historyCursor;
+    notice(
+      historyCursor
+        ? "Older messages loaded. Continue to find earlier conversation."
+        : "All conversation history is loaded.",
+    );
+  }, "Loading older messages…");
+element("latest-messages").onclick = () =>
+  action(async () => {
+    await refresh();
+    scrollToLatest();
+    notice("Showing the latest conversation.");
+  }, "Loading latest messages…");
 element("refresh-chat").onclick = () =>
   action(async () => {
     await refresh();
     sendStatus("");
     notice("Chat is up to date. Review the conversation before resending.");
   }, "Refreshing chat…");
-element("older-pending").onclick = () =>
-  action(async () => {
-    const params = new URLSearchParams({ pending: "true" });
-    if (pendingCursor) params.set("cursor", pendingCursor);
-    const page = await api(`/api/messages?${params}`);
-    render(page.messages);
-    pendingCursor = page.cursor;
-    notice(
-      page.cursor
-        ? "Page checked. Click again to find older pending proposals."
-        : "All history checked. Click again to recheck from the latest page.",
-    );
-  });
 function updateBusy(value) {
   busy = value;
   for (
     const control of document.querySelectorAll(
-      "#chat button, #chat textarea, #chat select, #chat input, #logout",
+      "#chat button, #chat textarea, #chat select, #chat input, #settings button, #settings select, #settings input, #logout",
     )
   ) {
     control.disabled = value;
@@ -455,11 +665,14 @@ element("chat-form").onsubmit = (event) => {
       element("key-setup").hidden = false;
       throw new Error("Add your OpenRouter API key to start chatting.");
     }
+    expirePendingProposalCards();
     pendingUser?.remove();
     pendingUser = temporaryMessage("user", content);
     const thinking = temporaryMessage("assistant", "Thinking", "thinking");
+    setComposerExpanded(true);
     sendStatus("Sending your message. Planner is thinking…");
-    element("send").textContent = "Sending…";
+    element("send").setAttribute("aria-label", "Sending message");
+    element("send").title = "Sending message";
     scrollToLatest();
     let received = false;
     element("timing").hidden = true;
@@ -489,12 +702,11 @@ element("chat-form").onsubmit = (event) => {
       received = true;
       thinking.remove();
       render([message]);
-      render(message.related_messages ?? []);
-      pendingCursor = message.pending_cursor;
       element("prompt").value = "";
       element("online-search").checked = false;
       try {
         await refresh();
+        render([message]);
         sendStatus(
           "Reply received. Any proposed changes still need your confirmation.",
         );
@@ -515,16 +727,14 @@ element("chat-form").onsubmit = (event) => {
           pendingUser = null;
         }
         element("empty-chat").hidden = renderedMessages.size > 0;
-        sendStatus(
-          `${error.message} Your draft is kept. Check the conversation with Refresh chat before resending; the message may have reached the server.`,
-          "error",
-        );
+        requestFailure(error);
       } else {
         notice(error.message, "error");
       }
     } finally {
       thinking.remove();
-      element("send").textContent = "Send ↑";
+      element("send").setAttribute("aria-label", "Send message");
+      element("send").title = "Send message";
       if (session) {
         scrollToLatest();
         element("prompt").disabled = false;

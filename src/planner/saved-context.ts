@@ -10,34 +10,6 @@ export function queryObject(input: unknown, fields: string[]): RecordData {
 }
 
 // Only safe, explicit fields enter context; never spread proposal payloads.
-export function proposalSummary(message: RecordData): RecordData {
-  const proposal = object(message.proposal);
-  const data = object(proposal.data);
-  return {
-    id: message.id,
-    op: proposal.op,
-    state: message.action_state,
-    name: data.name ?? null,
-    short_description: data.short_description ?? null,
-    target_id: data.id ?? null,
-    task_ids: data.ids ?? null,
-    description: data.description ?? null,
-    changed_fields: Object.keys(data).filter((field) =>
-      field !== "full_description"
-    ),
-  };
-}
-
-export function proposalLine(message: RecordData): string {
-  const summary = proposalSummary(message);
-  return `- [${summary.id}] ${summary.op}: ${
-    String(
-      summary.name ?? summary.short_description ?? summary.description ??
-        summary.target_id ?? "settings/tasks",
-    ).slice(0, 80)
-  } — ${summary.state} (not saved unless confirmed)`;
-}
-
 export function settingsReply(profile: RecordData, input: unknown): string {
   queryObject(input, []);
   return `Saved settings:\nTimezone: ${profile.timezone}\nPreferences: ${

@@ -163,6 +163,27 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
         next_run: nextOccurrence(data.cron, data.timezone, now),
       };
       break;
+    case "update_reminder": {
+      clean = { id: uuid(data.id) };
+      if (data.description !== undefined) {
+        clean.description = text(data.description);
+      }
+      if (data.cron !== undefined) clean.cron = text(data.cron, 100);
+      if (data.timezone !== undefined) clean.timezone = timezone(data.timezone);
+      if (data.active !== undefined) {
+        if (typeof data.active !== "boolean") {
+          throw new InputError("Invalid reminder active state");
+        }
+        clean.active = data.active;
+      }
+      if (Object.keys(clean).length === 1) {
+        throw new InputError("Reminder update must include a changed field");
+      }
+      if (clean.cron !== undefined && clean.timezone !== undefined) {
+        nextOccurrence(clean.cron, clean.timezone, now);
+      }
+      break;
+    }
     default:
       throw new InputError("Unsupported action");
   }
