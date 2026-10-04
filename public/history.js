@@ -2,19 +2,19 @@ export async function reconcileHistory(
   page,
   initialized,
   historyCursor,
-  loadedIds,
+  coveredIds,
   getOlderPage,
 ) {
   const messages = [...page.messages];
   if (
-    initialized && loadedIds.size &&
-    !messages.some((message) => loadedIds.has(message.id))
+    initialized && coveredIds.size &&
+    !messages.some((message) => coveredIds.has(message.id))
   ) {
     let cursor = page.cursor;
     while (cursor) {
       const olderPage = await getOlderPage(cursor);
       messages.push(...olderPage.messages);
-      if (olderPage.messages.some((message) => loadedIds.has(message.id))) {
+      if (olderPage.messages.some((message) => coveredIds.has(message.id))) {
         break;
       }
       cursor = olderPage.cursor;
@@ -22,6 +22,6 @@ export async function reconcileHistory(
   }
   return {
     messages,
-    cursor: initialized ? historyCursor : page.cursor,
+    cursor: initialized && coveredIds.size ? historyCursor : page.cursor,
   };
 }

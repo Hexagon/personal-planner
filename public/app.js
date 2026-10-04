@@ -39,6 +39,7 @@ let pendingCursor = null;
 let pendingUser = null;
 let historyCursor = null;
 let historyInitialized = false;
+const historyCoverage = new Set();
 function sendStatus(message, tone = "info") {
   const target = element("send-status");
   target.textContent = message;
@@ -128,6 +129,7 @@ function setSession(value) {
     pendingUser = null;
     historyCursor = null;
     historyInitialized = false;
+    historyCoverage.clear();
     element("prompt").value = "";
     setComposerExpanded(false);
     element("online-search").checked = false;
@@ -447,11 +449,12 @@ async function refresh() {
     page,
     historyInitialized,
     historyCursor,
-    new Set(renderedMessages.keys()),
+    historyCoverage,
     (cursor) =>
       api(`/api/messages?history=true&cursor=${encodeURIComponent(cursor)}`),
   );
   render(history.messages);
+  for (const message of history.messages) historyCoverage.add(message.id);
   historyCursor = history.cursor;
   historyInitialized = true;
   element("older-messages").disabled = !historyCursor;
@@ -464,6 +467,7 @@ element("older-messages").onclick = () =>
       `/api/messages?history=true&cursor=${encodeURIComponent(historyCursor)}`,
     );
     render(page.messages);
+    for (const message of page.messages) historyCoverage.add(message.id);
     historyCursor = page.cursor;
     element("older-messages").disabled = !historyCursor;
     notice(

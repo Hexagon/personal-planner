@@ -37,6 +37,7 @@ export function createHandler(
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/settings.js": ["settings.js", "text/javascript; charset=utf-8"],
     "/upcoming.js": ["upcoming.js", "text/javascript; charset=utf-8"],
+    "/history.js": ["history.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
   };
   const headers = {
