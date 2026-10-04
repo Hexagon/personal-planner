@@ -9,7 +9,18 @@ import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
 import { InputError, object, text } from "./validation.ts";
 
-export function createHandler(config: Config, kv: Deno.Kv) {
+export function isPreviewDeployment(
+  isDenoDeploy: boolean,
+  appEnvironment: string | undefined,
+): boolean {
+  return isDenoDeploy && appEnvironment !== "production";
+}
+
+export function createHandler(
+  config: Config,
+  kv: Deno.Kv,
+  preview = false,
+) {
   const active = new Set<string>();
   const oauthCallbacks = new Set([
     ...(config.googleClientId ? ["/auth/callback/google"] : []),
@@ -69,6 +80,7 @@ export function createHandler(config: Config, kv: Deno.Kv) {
       if (request.method === "GET" && path === "/api/config") {
         return json({
           schedulerEnabled: true,
+          preview,
           model: config.model,
           models: availableModels,
           serverKeyAvailable: !!config.openrouterKey,

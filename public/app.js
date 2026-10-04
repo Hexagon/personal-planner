@@ -16,6 +16,7 @@ try {
   notice("Could not load the app. Refresh the page to try again.", "error");
   throw new Error("App configuration unavailable");
 }
+element("preview-badge").hidden = !config.preview;
 for (const model of config.models) {
   const option = document.createElement("option");
   option.value = model.id;

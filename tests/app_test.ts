@@ -1,6 +1,6 @@
 import { encode } from "@auth/core/jwt";
 import { authConfig } from "../src/auth.ts";
-import { createHandler } from "../src/app.ts";
+import { createHandler, isPreviewDeployment } from "../src/app.ts";
 import type { Config } from "../src/config.ts";
 import { Database, deliverReminder, dueReminders } from "../src/db.ts";
 import { runSchedulerTick } from "../src/scheduler.ts";
@@ -61,6 +61,13 @@ async function withKv(test: (kv: Deno.Kv) => Promise<void>) {
 }
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+Deno.test("preview badge is limited to non-production Deno Deploy", () => {
+  assert(!isPreviewDeployment(false, undefined));
+  assert(!isPreviewDeployment(true, "production"));
+  assert(isPreviewDeployment(true, "preview"));
+  assert(isPreviewDeployment(true, undefined));
+});
 
 Deno.test("bounded pending pages expose old inline cards after reload without crossing owners", async () => {
   await withKv(async (kv) => {

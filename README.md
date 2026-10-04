@@ -111,6 +111,13 @@ send `Origin: null`, which the app rejects. Sign-in still requires an exact
 security policy also allows configured OAuth provider origins so browsers can
 follow the sign-in form's authorization redirect.
 
+Deployments are automated by GitHub Actions only for pushes to `dev` and `main`.
+Set the repository Actions variable `DENO_DEPLOY_PROJECT` to the Deno Deploy
+project name and the `DENO_DEPLOY_TOKEN` secret to its deploy token. Set
+`APP_ENV=production` in the Deno Deploy production environment; leave it unset
+or use another value for preview environments. The app displays a Preview badge
+on Deno Deploy deployments where `APP_ENV` is not `production`.
+
 The deploy entrypoint registers a native `Deno.cron` job that polls a bounded
 Deno KV due index every minute. Reminder messages and expected-occurrence
 advances are committed in one atomic KV transaction. Cron invocations are
