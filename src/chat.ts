@@ -113,7 +113,7 @@ export async function chat(
         String(task.created_at ?? "").slice(0, 10),
       ]),
     },
-    reminders: reminders.map((reminder) => ({
+    reminders: reminders.slice(0, maxReminders).map((reminder) => ({
       id: reminder.id,
       description: String(reminder.description).slice(0, 100),
       cron: reminder.cron,
