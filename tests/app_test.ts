@@ -316,6 +316,10 @@ Deno.test("BYOK is used only for chat and can replace a missing server key", asy
         new Headers(init?.headers).get("Authorization") ===
           "Bearer " + userKey,
       );
+      assert(
+        JSON.parse(String(init?.body)).reasoning.enabled === false,
+        "Chat defaults to non-thinking mode",
+      );
       return Promise.resolve(
         new Response(JSON.stringify({
           choices: [{
@@ -472,6 +476,17 @@ Deno.test("consent, confirmation IDs and request bodies are validated before AI 
         ),
       )).status === 400,
     );
+    for (const reasoning of [null, false, {}, "low", "untrusted"]) {
+      const response = await handler(
+        request(
+          "/api/chat",
+          { content: "Hi", ai_consent: true, reasoning },
+          config.origin,
+          cookie,
+        ),
+      );
+      assert(response.status === 400);
+    }
     assert(
       (await handler(
         request(

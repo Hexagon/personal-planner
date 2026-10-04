@@ -1,4 +1,9 @@
-import { availableModels, type Config, isAvailableModel } from "./config.ts";
+import {
+  availableModels,
+  type Config,
+  isAvailableModel,
+  isReasoningMode,
+} from "./config.ts";
 import { authenticate, AuthError, handleAuth } from "./auth.ts";
 import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
@@ -18,6 +23,7 @@ export function createHandler(config: Config, kv: Deno.Kv) {
   const files: Record<string, [string, string]> = {
     "/": ["index.html", "text/html; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
+    "/settings.js": ["settings.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
   };
   const headers = {
@@ -161,6 +167,12 @@ export function createHandler(config: Config, kv: Deno.Kv) {
           const userKey = body.openrouter_key === undefined
             ? undefined
             : text(body.openrouter_key, 512);
+          const reasoning = body.reasoning === undefined
+            ? "off"
+            : body.reasoning;
+          if (!isReasoningMode(reasoning)) {
+            throw new InputError("Choose a supported reasoning mode");
+          }
           if (!userKey && !config.openrouterKey) {
             throw new InputError("Add an OpenRouter API key to continue");
           }
@@ -172,6 +184,7 @@ export function createHandler(config: Config, kv: Deno.Kv) {
               model,
               body.online_search,
               userKey as string | undefined,
+              reasoning,
             ),
           );
         }
