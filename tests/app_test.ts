@@ -939,6 +939,70 @@ Deno.test("confirmation applies every requested task update field", async () => 
   });
 });
 
+Deno.test("task updates retry when the task changes during confirmation", async () => {
+  await withKv(async (kv) => {
+    const taskKey = ["planner", "tasks", owner, id(1)] as const;
+    const initial = task(1);
+    delete initial.full_description;
+    await kv.set(taskKey, initial);
+
+    let injectDuringCommit = false;
+    const wrapAtomic = (
+      operation: ReturnType<Deno.Kv["atomic"]>,
+    ): ReturnType<Deno.Kv["atomic"]> =>
+      new Proxy(operation, {
+        get(target, property) {
+          if (property === "commit") {
+            return async () => {
+              if (injectDuringCommit) {
+                injectDuringCommit = false;
+                const current = await kv.get<RecordData>(taskKey);
+                await kv.set(taskKey, {
+                  ...current.value,
+                  name: "Concurrent rename",
+                });
+              }
+              return target.commit();
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          if (["check", "set", "delete"].includes(String(property))) {
+            return (...args: unknown[]) =>
+              wrapAtomic(value.apply(target, args));
+          }
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    const interceptedKv = new Proxy(kv, {
+      get(target, property) {
+        if (property === "atomic") {
+          return () => wrapAtomic(target.atomic());
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as Deno.Kv;
+    const db = new Database(interceptedKv, owner);
+    await db.ensureProfile();
+    const [message] = await db.insert("messages", {
+      role: "assistant",
+      content: "Update task?",
+      proposal: {
+        op: "update_task",
+        data: { id: id(1), priority: 5 },
+      },
+    });
+
+    injectDuringCommit = true;
+    assert(await db.confirm(message.id, false));
+    const updated = await db.owned("tasks", id(1));
+    assert(
+      updated.name === "Concurrent rename" && updated.priority === 5,
+      "A confirmed update must retry against the latest task version",
+    );
+  });
+});
+
 Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", async () => {
   await withKv(async (kv) => {
     const db = new Database(kv, owner);

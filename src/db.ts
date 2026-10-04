@@ -551,6 +551,10 @@ export class Database {
           if (!target || !taskEntry) {
             throw new InputError("Record not found in your account");
           }
+          checks.push({
+            key: taskEntry.key,
+            versionstamp: taskEntry.versionstamp,
+          });
           if (proposal.op === "delete_task") {
             writes.push({ type: "delete", key: taskEntry.key });
             writes.push({
