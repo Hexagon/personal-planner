@@ -61,6 +61,85 @@ async function withKv(test: (kv: Deno.Kv) => Promise<void>) {
 }
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+Deno.test("bounded pending pages expose old inline cards after reload without crossing owners", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    const other = new Database(kv, otherOwner);
+    const old = (await db.insert("messages", {
+      role: "assistant",
+      content: "Add old task?",
+      proposal: {
+        op: "add_task",
+        data: { name: "Old", short_description: "Old task" },
+      },
+    }))[0];
+    // Ensure a strictly older index entry independent of clock resolution.
+    const oldKey = ["planner", "messages", owner, String(old.id)];
+    await kv.delete([
+      "planner",
+      "message_dates",
+      owner,
+      String(old.created_at),
+      String(old.id),
+    ]);
+    await kv.set(oldKey, { ...old, created_at: "2000-01-01T00:00:00.000Z" });
+    await kv.set([
+      "planner",
+      "message_dates",
+      owner,
+      "2000-01-01T00:00:00.000Z",
+      String(old.id),
+    ], old.id);
+    for (let n = 0; n < 105; n++) {
+      await db.insert("messages", { role: "user", content: `Recent ${n}` });
+    }
+    const foreign = (await other.insert("messages", {
+      role: "assistant",
+      content: "FOREIGN-CARD",
+      proposal: { op: "set_profile", data: { preferences: "Other" } },
+    }))[0];
+    const handler = createHandler(config, kv);
+    const cookie = await sessionCookie();
+    const get = (path: string) =>
+      handler(request(path, undefined, config.origin, cookie));
+    assert(
+      !(await (await get("/api/messages")).text()).includes(String(old.id)),
+    );
+    const first = await (await get("/api/messages?pending=true")).json();
+    assert(first.messages.length === 0 && first.cursor);
+    const second = await (await get(
+      `/api/messages?pending=true&cursor=${encodeURIComponent(first.cursor)}`,
+    )).json();
+    assert(second.messages.length === 1 && second.messages[0].id === old.id);
+    assert(second.messages[0].proposal.data.name === "Old");
+    assert(second.cursor === null);
+    const confirmed = await handler(
+      request(
+        "/api/confirm",
+        { message_id: old.id, cancel: false },
+        config.origin,
+        cookie,
+      ),
+    );
+    assert((await confirmed.json()).result === true);
+    assert(await db.confirm(old.id, false) === false);
+    assert(await db.confirm(foreign.id, false) === false);
+    const status = await (await get(`/api/messages?id=${old.id}`)).json();
+    assert(status[0].action_state === "confirmed");
+    const unavailable = await (await get(`/api/messages?id=${foreign.id}`))
+      .json();
+    assert(unavailable.length === 0);
+    assert(
+      (await get("/api/messages?pending=true&cursor=garbage")).status === 400,
+    );
+    assert((await get("/api/messages?pending=false")).status === 400);
+    const page = await (await get(
+      `/api/messages?pending=true&cursor=${encodeURIComponent(first.cursor)}`,
+    )).json();
+    assert(page.messages.length === 0);
+  });
+});
 function task(n: number, status = "open"): RecordData {
   const timestamp = "2026-10-01T00:00:00.000Z";
   return {

@@ -79,6 +79,27 @@ export function createHandler(config: Config, kv: Deno.Kv) {
       const userId = await authenticate(request, config);
       const db = new Database(kv, userId);
       if (path === "/api/messages") {
+        const params = new URL(request.url).searchParams;
+        if (params.size) {
+          if (params.has("id")) {
+            if (params.size !== 1) {
+              throw new InputError("Use one message query");
+            }
+            const message = await db.ownedMessage(params.get("id"));
+            return json(message ? [message] : []);
+          }
+          if (
+            [...params.keys()].some((name) =>
+              !["cursor", "pending"].includes(name)
+            ) ||
+            (params.has("pending") && params.get("pending") !== "true")
+          ) throw new InputError("Invalid message query");
+          const page = await db.messagePage(
+            params.get("cursor"),
+            params.get("pending") === "true",
+          );
+          return json({ ...page, messages: page.messages.reverse() });
+        }
         return json((await db.list("messages")).reverse());
       }
       if (

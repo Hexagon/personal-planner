@@ -33,33 +33,39 @@ export function taskList(
   today: string,
 ): string {
   const query = object(input);
-  const status = String(query.status ?? "open");
-  if (!taskStatuses.includes(status as "open")) {
+  if (
+    Object.keys(query).some((field) =>
+      !["status", "location_name", "urgency"].includes(field)
+    )
+  ) throw new InputError("Invalid task query field");
+  const status = query.status ?? "open";
+  if (typeof status !== "string" || !taskStatuses.includes(status as "open")) {
     throw new InputError("Invalid task status filter");
   }
   const location = query.location_name == null
     ? null
     : text(query.location_name, 100);
-  const wanted = query.urgency == null
-    ? null
-    : (Array.isArray(query.urgency) ? query.urgency : [query.urgency]);
+  const wanted = query.urgency == null ? null : query.urgency;
   if (
-    wanted &&
-    (wanted.length < 1 ||
+    wanted !== null &&
+    (!Array.isArray(wanted) || wanted.length < 1 ||
+      wanted.length > urgencies.length ||
       !wanted.every((value) => urgencies.includes(value as Urgency)))
   ) {
     throw new InputError("Invalid urgency filter");
   }
+  const selectedUrgencies = wanted as Urgency[] | null;
   const matching = tasks.filter((task) =>
     task.status === status &&
     (!location ||
       locationKey(task.location_name) === locationKey(location)) &&
-    (!wanted || wanted.includes(urgency(task.due_date, today)))
+    (!selectedUrgencies ||
+      selectedUrgencies.includes(urgency(task.due_date, today)))
   );
   const shown = matching.slice(0, listLimit);
   const filters = [
     location ? `at ${location}` : null,
-    wanted ? `urgency ${wanted.join("/")}` : null,
+    selectedUrgencies ? `urgency ${selectedUrgencies.join("/")}` : null,
   ].filter(Boolean).join(", ");
   const heading = `${status[0].toUpperCase()}${status.slice(1)} tasks${
     filters ? ` (${filters})` : ""
@@ -91,6 +97,7 @@ type Resolution = { ids: string[]; clarification: null } | {
 export function resolveReferences(
   tasks: RecordData[],
   references: string[],
+  entity: "task" | "reminder" = "task",
 ): Resolution {
   const ids: string[] = [];
   for (const reference of references) {
@@ -108,14 +115,14 @@ export function resolveReferences(
       return {
         ids: null,
         clarification: matches.length
-          ? `Which task do you mean by "${reference}"? ${
+          ? `Which ${entity} do you mean by "${reference}"? ${
             matches.slice(0, 5).map((task) =>
               `${String(task.name)} — ${
                 String(task.short_description)
               } [${task.id}]`
             ).join("; ")
           }. Please give the full name or ID. Nothing has been changed.`
-          : `I couldn't find one task matching "${reference}". Please give its full name or ID. Nothing has been changed.`,
+          : `I couldn't find one ${entity} matching "${reference}". Please give its full name or ID. Nothing has been changed.`,
       };
     }
     const id = String(matches[0].id);
@@ -123,7 +130,7 @@ export function resolveReferences(
       return {
         ids: null,
         clarification:
-          "Several references match the same task. Please list each task once. Nothing has been changed.",
+          `Several references match the same ${entity}. Please list each ${entity} once. Nothing has been changed.`,
       };
     }
     ids.push(id);

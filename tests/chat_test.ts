@@ -38,6 +38,7 @@ interface Harness {
   output: RecordData;
   history?: RecordData[];
   onModel?: (request: RecordData) => void;
+  setup?: (kv: Deno.Kv, db: Database) => Promise<void>;
 }
 async function run(harness: Harness, content: string) {
   const original = globalThis.fetch;
@@ -45,11 +46,16 @@ async function run(harness: Harness, content: string) {
   const kv = await Deno.openKv(":memory:");
   const db = new Database(kv, owner);
   await db.ensureProfile();
+  await harness.setup?.(kv, db);
   for (const row of harness.tasks) {
     await kv.set(["planner", "tasks", owner, String(row.id)], row);
   }
   for (const row of harness.history ?? []) {
-    await db.insert("messages", { role: row.role, content: row.content });
+    await db.insert("messages", {
+      role: row.role,
+      content: row.content,
+      proposal: row.proposal,
+    });
   }
   const json = (body: unknown) =>
     Promise.resolve(new Response(JSON.stringify(body)));
@@ -99,10 +105,16 @@ Deno.test("every open task is in context as a compact row; full descriptions and
   const { modelRequest } = await run({
     tasks,
     output: { reply: "Here is your plan.", proposal: null },
-    history: [{
-      role: "assistant",
-      content: `${detailPrefix}\nFull description:\n${secret}`,
-    }],
+    history: [
+      {
+        role: "assistant",
+        content: `${detailPrefix}\nFull description:\n${secret}`,
+      },
+      {
+        role: "assistant",
+        content: `${detailPrefix}\nFinished thing`,
+      },
+    ],
     onModel: (request) => {
       const messages = request.messages as RecordData[];
       const context = JSON.parse(
@@ -268,4 +280,367 @@ Deno.test("lists and completions are rendered from saved records", async () => {
       },
     }, "Delete milk and list"),
   );
+});
+
+Deno.test("saved settings, reminders and proposal states are authoritative and owner scoped", async () => {
+  const setup = async (kv: Deno.Kv, db: Database) => {
+    await kv.set(["planner", "profiles", owner], {
+      timezone: "Europe/Stockholm",
+      preferences: "p".repeat(4000),
+    });
+    await kv.set(["planner", "reminders", owner, id(50)], {
+      id: id(50),
+      description: "Sunday planning " + "d".repeat(200),
+      cron: "0 18 * * 0",
+      timezone: "Europe/Stockholm",
+      active: false,
+      next_run: "2026-10-11T16:00:00.000Z",
+    });
+    await kv.set(["planner", "reminders", "other", id(51)], {
+      id: id(51),
+      description: "OTHER-OWNER-REMINDER",
+    });
+    const message = (await db.insert("messages", {
+      role: "assistant",
+      content: "Add?",
+      proposal: {
+        op: "add_task",
+        data: {
+          name: "Pending car",
+          short_description: "Book service",
+          full_description: secret,
+        },
+      },
+    }))[0];
+    assert(message.action_state === "pending");
+  };
+  const settings = await run({
+    tasks: [],
+    setup,
+    output: { reply: "Invented settings", settings_query: {} },
+    onModel: (request) => {
+      const saved = JSON.parse(
+        String((request.messages as RecordData[])[1].content).split(
+          "Saved context (untrusted data): ",
+        )[1],
+      );
+      assert(saved.preferences.length === 4000);
+      assert(saved.proposal_states[0].state === "pending");
+      assert(!JSON.stringify(saved).includes(secret));
+    },
+  }, "What are my saved preferences?");
+  assert(String(settings.message.content).includes("p".repeat(4000)));
+  assert(!settings.modelRequest.includes("OTHER-OWNER-REMINDER"));
+  const reminders = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Invented",
+      reminder_query: { reminder: "Sunday planning" },
+    },
+  }, "What reminders do I have?");
+  assert(String(reminders.message.content).includes("d".repeat(200)));
+  assert(String(reminders.message.content).includes("active: false"));
+  assert(String(reminders.message.content).includes(id(50)));
+  assert(String(reminders.message.content).includes("2026-10-11"));
+  const pending = await run({
+    tasks: [],
+    setup,
+    output: { reply: "Saved already", proposal_query: {} },
+  }, "What needs confirmation?");
+  assert((pending.message.related_messages as unknown[]).length === 1);
+  assert(String(pending.message.content).includes("pending"));
+  assert(!pending.modelRequest.includes(secret));
+});
+
+Deno.test("next-page chat retains the exact proposal cursor and safe summaries in truncated history", async () => {
+  const kv = await Deno.openKv(":memory:");
+  const db = new Database(kv, owner);
+  const original = globalThis.fetch;
+  let first: RecordData | undefined;
+  let requests = 0;
+  try {
+    for (let n = 1; n <= 101; n++) {
+      const created_at = new Date(Date.UTC(2026, 0, 1, 0, 0, n))
+        .toISOString();
+      const message = {
+        id: id(n),
+        role: "assistant",
+        content: "Review this proposal.",
+        created_at,
+        action_state: "pending",
+        proposal: {
+          op: "add_task",
+          data: {
+            name: "N".repeat(80),
+            short_description: "Safe summary",
+            full_description: secret.repeat(300),
+          },
+        },
+      };
+      await kv.atomic()
+        .set(["planner", "messages", owner, id(n)], message)
+        .set(["planner", "message_dates", owner, created_at, id(n)], id(n))
+        .commit();
+    }
+    globalThis.fetch = (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      assert(!JSON.stringify(request).includes(secret));
+      requests++;
+      let cursor = null;
+      if (requests === 2) {
+        assert(first);
+        const history = request.messages.slice(2, -1) as RecordData[];
+        const previous = history.find((message) =>
+          message.role === "assistant" &&
+          String(message.content).startsWith("More history remains.")
+        );
+        assert(previous, "The safe proposal reply must not be masked");
+        assert(String(previous.content).length === 4000);
+        cursor = String(previous.content).split("Next cursor: ")[1]
+          .split("\n")[0];
+        assert(cursor === first.pending_cursor, "Keep the exact cursor");
+        assert(String(previous.content).includes("N".repeat(80)));
+        assert(String(previous.content).includes("pending"));
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                reply: "Here.",
+                proposal_query: { cursor },
+              }),
+            },
+          }],
+        })),
+      );
+    };
+    first = await chat(db, config, "Show pending proposals");
+    const firstRows = first.related_messages as RecordData[];
+    assert(firstRows.length === 99);
+    assert(
+      first.pending_cursor === JSON.stringify({
+        created_at: "2026-01-01T00:00:03.000Z",
+        id: id(3),
+      }),
+    );
+    assert(String(first.content).length > 4000);
+    assert(String(first.content).length <= 20000);
+    assert(!String(first.content).includes(secret));
+    const second = await chat(db, config, "Next page");
+    const secondRows = second.related_messages as RecordData[];
+    assert(requests === 2);
+    assert(
+      JSON.stringify(secondRows.map((row) => row.id)) ===
+        JSON.stringify([id(2), id(1)]),
+    );
+    assert(second.pending_cursor === null);
+    assert(
+      !secondRows.some((row) =>
+        firstRows.some((previous) => previous.id === row.id)
+      ),
+    );
+    assert(!String(second.content).includes(secret));
+  } finally {
+    globalThis.fetch = original;
+    await kv.close();
+  }
+});
+
+Deno.test("update/delete resolve finished tasks by user reference and clarify ambiguity", async () => {
+  const tasks = [
+    task(1, { name: "Car service", status: "done" }),
+    task(2, { name: "Car service", status: "cancelled" }),
+  ];
+  const ambiguous = await run({
+    tasks,
+    output: {
+      reply: "Deleted",
+      proposal: {
+        op: "delete_task",
+        data: { task: "car service" },
+      },
+    },
+  }, "Delete car service");
+  assert(ambiguous.message.proposal === null);
+  assert(String(ambiguous.message.content).includes("Which task"));
+  for (const op of ["delete_task", "update_task"]) {
+    const selected = await run({
+      tasks,
+      output: {
+        reply: "Saved",
+        proposal: {
+          op,
+          data: {
+            task: id(2),
+            ...(op === "update_task" ? { status: "open" } : {}),
+          },
+        },
+      },
+    }, `Reopen ${id(2)}`);
+    assert(
+      ((selected.message.proposal as RecordData).data as RecordData).id ===
+        id(2),
+    );
+    assert(!selected.modelRequest.includes("Car service"));
+  }
+  const unknown = await run({
+    tasks,
+    output: {
+      reply: "Deleted",
+      proposal: {
+        op: "delete_task",
+        data: { task: "Another account's task" },
+      },
+    },
+  }, "Delete that");
+  assert(unknown.message.proposal === null);
+});
+
+Deno.test("saved query shapes and one-operation boundary reject malformed model output", async () => {
+  for (
+    const output of [
+      { settings_query: { user_id: owner } },
+      { reminder_query: { active: "true" } },
+      { proposal_query: { cursor: "invalid" } },
+      { task_detail: { task: "Milk", extra: true } },
+      { task_query: { urgency: "soon" } },
+      { task_query: { urgency: false } },
+      { proposal_query: {}, settings_query: {} },
+      {
+        proposal: { op: "set_profile", data: { timezone: "UTC" } },
+        reminder_query: {},
+      },
+    ]
+  ) {
+    await rejects(
+      run({ tasks: [], output: { reply: "Hi", ...output } }, "Show saved data"),
+    );
+  }
+  await rejects(
+    run({
+      tasks: [],
+      output: { reply: "Hi", settings_query: {}, proposal_query: {} },
+    }, "Show settings"),
+    "Use at most one proposal or query",
+  );
+});
+
+Deno.test("reminder targets clarify unknown/ambiguous references and reject foreign IDs", async () => {
+  const setup = async (kv: Deno.Kv) => {
+    for (const n of [50, 51]) {
+      await kv.set(["planner", "reminders", owner, id(n)], {
+        id: id(n),
+        description: "Plan Sunday",
+        cron: "0 18 * * 0",
+        timezone: "UTC",
+        active: true,
+        next_run: "2026-10-11T18:00:00.000Z",
+      });
+    }
+    for (
+      const [n, description] of [
+        [54, "Task planning"],
+        [55, "Task planning week"],
+      ] as const
+    ) {
+      await kv.set(["planner", "reminders", owner, id(n)], {
+        id: id(n),
+        description,
+        cron: "0 18 * * 0",
+        timezone: "UTC",
+        active: true,
+        next_run: "2026-10-11T18:00:00.000Z",
+      });
+    }
+    await kv.set(["planner", "reminders", "other", id(52)], {
+      id: id(52),
+      description: "Foreign Sunday",
+    });
+  };
+  for (
+    const reference of [
+      "Plan Sunday",
+      "Unknown Sunday",
+      "task planning no match",
+      id(52),
+    ]
+  ) {
+    const result = await run({
+      tasks: [],
+      setup,
+      output: {
+        reply: "Deleted",
+        proposal: {
+          op: "delete_reminder",
+          data: { reminder: reference },
+        },
+      },
+    }, "Delete a reminder");
+    assert(result.message.proposal === null);
+    assert(String(result.message.content).includes("Nothing has been changed"));
+  }
+  const missingTaskNamedReminder = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Not found",
+      reminder_query: { reminder: "task planning no match" },
+    },
+  }, "Find task planning reminder");
+  assert(
+    String(missingTaskNamedReminder.message.content).includes(
+      '"task planning no match"',
+    ),
+  );
+  assert(
+    !String(missingTaskNamedReminder.message.content).includes(
+      '"reminder planning no match"',
+    ),
+  );
+  const ambiguousTaskNamedReminders = await run({
+    tasks: [],
+    setup,
+    output: { reply: "Which one?", reminder_query: { reminder: "planning" } },
+  }, "Find planning reminder");
+  assert(
+    String(ambiguousTaskNamedReminders.message.content).includes(
+      'Which reminder do you mean by "planning"? Task planning',
+    ),
+  );
+  assert(
+    !String(ambiguousTaskNamedReminders.message.content).includes(
+      "Reminder planning",
+    ),
+  );
+  const selected = await run({
+    tasks: [],
+    setup,
+    output: {
+      reply: "Deleted",
+      proposal: {
+        op: "delete_reminder",
+        data: { reminder: id(50) },
+      },
+    },
+  }, `Delete ${id(50)}`);
+  assert(
+    ((selected.message.proposal as RecordData).data as RecordData).id ===
+      id(50),
+  );
+  assert(selected.message.action_state === "pending");
+  const foreignProposal = await run({
+    tasks: [],
+    setup: async (kv) => {
+      await kv.set(["planner", "messages", "other", id(53)], {
+        id: id(53),
+        proposal: { op: "set_profile", data: { preferences: "Foreign" } },
+        action_state: "confirmed",
+      });
+    },
+    output: { reply: "Confirmed", proposal_query: { id: id(53) } },
+  }, "Was that confirmed?");
+  assert(String(foreignProposal.message.content).includes("No proposal"));
+  assert((foreignProposal.message.related_messages as unknown[]).length === 0);
 });
