@@ -9,6 +9,7 @@ import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
 import { upcoming } from "./upcoming.ts";
 import { InputError, object, text } from "./validation.ts";
+import { canIndex, renderLanding, robots, sitemap } from "./landing.ts";
 
 function withoutProposalHistory(message: Record<string, unknown>) {
   return message.proposal
@@ -52,11 +53,15 @@ export function createHandler(
     "/history.js": ["history.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
     "/icon.svg": ["icon.svg", "image/svg+xml"],
+    "/favicon.png": ["favicon.png", "image/png"],
+    "/social.png": ["social.png", "image/png"],
   };
+  const indexable = canIndex(config, preview);
   const headers = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
+    "X-Robots-Tag": "noindex, nofollow",
     "Content-Security-Policy":
       `default-src 'self'; connect-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action ${formActions}`,
   };
@@ -66,16 +71,37 @@ export function createHandler(
       headers: { ...headers, "Content-Type": "application/json" },
     });
   return async (request: Request): Promise<Response> => {
-    const path = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const path = url.pathname;
     try {
+      if (request.method === "GET" && path === "/robots.txt") {
+        return new Response(robots(config, indexable), {
+          headers: { ...headers, "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
+      if (request.method === "GET" && path === "/sitemap.xml" && indexable) {
+        return new Response(sitemap(config), {
+          headers: {
+            ...headers,
+            "Content-Type": "application/xml; charset=utf-8",
+          },
+        });
+      }
       if (request.method === "GET" && files[path]) {
         const [file, type] = files[path];
+        const asset = new URL(`../public/${file}`, import.meta.url);
+        const publicPage = path === "/" && indexable && !url.search;
+        const body = path === "/"
+          ? renderLanding(await Deno.readTextFile(asset), config, publicPage)
+          : await Deno.readFile(asset);
         return new Response(
-          await Deno.readTextFile(
-            new URL(`../public/${file}`, import.meta.url),
-          ),
+          body,
           {
-            headers: { ...headers, "Content-Type": type },
+            headers: {
+              ...headers,
+              "Content-Type": type,
+              ...(publicPage ? { "X-Robots-Tag": "index, follow" } : {}),
+            },
           },
         );
       }

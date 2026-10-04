@@ -1,45 +1,59 @@
-# Personal Planner
+# Dayfold
 
-A small, chat-first family planner. It runs as one Deno server with Deno KV,
-Auth.js OAuth, OpenRouter-powered chat, and scheduled reminders. The interface
-is login and chat; proposals are reviewed and confirmed inline. Accounts are
-separate—there is no household sharing between accounts.
+**A personal to-do list you can talk to. Less to keep in your head.**
 
-## Quick start
+Organize tasks and errands through a simple conversation. See what needs
+attention, and confirm changes before they are saved. No complicated forms,
+productivity streaks, or unattended task changes.
 
-1. Install [Deno 2](https://deno.com/) and create a Google OAuth client, GitHub
-   OAuth app, or both. Set the callback URL to
-   `<APP_ORIGIN>/auth/callback/google` and/or
-   `<APP_ORIGIN>/auth/callback/github` (locally:
-   `http://localhost:8000/auth/callback/<provider>`).
-2. Copy `.env.example` to `.env` and set:
-   - `AUTH_SECRET` to a random secret of at least 32 bytes.
-   - At least one complete provider pair: `GOOGLE_CLIENT_ID` /
-     `GOOGLE_CLIENT_SECRET` or `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
-   - `APP_ORIGIN` to the exact app origin (default: `http://localhost:8000`).
-   - Optionally, `OPENROUTER_API_KEY` for a shared server-side key and
-     `OPENROUTER_MODEL` (`deepseek/deepseek-v4-flash` or
-     `deepseek/deepseek-v4-pro`). `PORT` defaults to `8000`.
-3. Run `deno task start`, open <http://localhost:8000>, and sign in. Users can
-   enter their own OpenRouter key in **Settings** instead of using a shared key.
+- **Less mental clutter.** Keep tasks and errands together.
+- **Simple organization.** Add dates, priorities, and places in plain language.
+- **A clearer next step.** See what is due and coming up.
+- **You stay in control.** Review changes before saving them.
 
-Each OAuth provider identity is a separate planner account. Use the same
-provider each time; accounts cannot be linked or shared.
+### A small example
 
-Use `deno task dev` while developing. Self-hosted reminders require the server
-to keep running. The local Deno KV database is created at
-`data/planner.sqlite3`; OAuth identities are separate and existing Supabase data
-is not imported.
+This is an illustration, not a live conversation:
+
+1. **You:** “Add buy milk at the grocery store.”
+2. **Dayfold:** proposes a task named “Buy milk,” located at “Grocery store.”
+   **Not saved yet.**
+3. **You:** choose **Confirm** (or **Cancel** to leave your list unchanged).
+4. **Dayfold:** shows the confirmed change as saved.
+
+Dayfold is a personal list, not a shared household account or a calendar. Each
+OAuth provider identity is a separate account. Use the same provider each time;
+accounts cannot be linked or shared. Reminders appear in chat, not as email or
+push notifications.
 
 ## Using chat
 
-Accept the AI data notice in **Settings** before sending a message. Ask in plain
-language to create, update, complete, cancel, or delete tasks; set preferences;
-or create reminders. Review each structured proposal and choose **Confirm** or
-**Cancel**. Mutations are never applied before confirmation. Ambiguous task or
-reminder references need clarification. Proposal cards are available only with
-the reply that created them. If you skip one or lose it from the current chat
-view, ask again rather than retrieving an older proposal.
+Sign in, then review the focused **Before you chat** panel. AI interprets your
+requests through OpenRouter; accept the explicit data notice before sending a
+message. You can choose **Later** and still read saved history and upcoming
+items without a model request. Consent can be revoked or reviewed from
+**Settings**. Chat access is disclosed before sign-in: a deployment can provide
+a server-side key, or require your personal OpenRouter key. Usage is billed to
+the account whose key is used; app-provided access is not a promise of unlimited
+or free usage.
+
+Model, reasoning, and personal-key options stay in Settings. Your key stays in
+account-scoped tab storage unless you explicitly choose device persistence.
+Blocked storage falls back to page memory and reports that it was not saved.
+
+For a new conversation, start with a real task. Suggestions only fill your
+draft; they never send automatically. A browser timezone suggestion also fills a
+separate “Set my timezone…” request: send it and confirm the proposed preference
+change before relying on local dates. It never silently changes your profile. If
+you skip timezone setup, a new account uses UTC until you confirm another
+timezone. Existing saved timezone preferences are preserved.
+
+Ask in plain language to create, update, complete, cancel, or delete tasks; set
+preferences; or create reminders. Review each structured proposal and choose
+**Confirm** or **Cancel**. Mutations are never applied before confirmation.
+Ambiguous task or reminder references need clarification. Proposal cards are
+available only with the reply that created them. If you skip one or lose it from
+the current chat view, ask again rather than retrieving an older proposal.
 
 Tasks have a name, AI-written short description, optional user-written full
 description and location, priority (1–5), optional due date, status, and
@@ -47,9 +61,9 @@ timestamps. The app calculates urgency and ordering, and renders task lists from
 saved records. Up to 300 open tasks are supported. Example requests:
 
 - “Set my timezone to Europe/Stockholm.”
-- “Remember that I should buy milk at ICA.”
+- “Remember that I should buy milk at the grocery store.”
 - “Add car service at the garage, priority 4, due Friday.”
-- “What’s urgent?” or “What’s at ICA?”
+- “What’s urgent?” or “What’s at the grocery store?”
 - “Show my completed tasks,” “Show cancelled tasks,” or “Reopen [task name].”
 - “Remind me every Sunday at 18:00 to plan our week, in Europe/Stockholm.”
 - “Pause my Sunday planning reminder,” “Resume it,” or “Change it to Mondays.”
@@ -103,6 +117,34 @@ for changes.
   details, opening hours, or inventory. It cannot purchase anything or track
   money, budgets, costs, or durations.
 
+## Self-hosting quick start
+
+Dayfold runs as one small Deno server with Deno KV, Auth.js OAuth,
+OpenRouter-powered chat, and scheduled reminders using Croner or Deno Deploy
+cron. The interface stays login and chat; there is no frontend build.
+
+1. Install [Deno 2](https://deno.com/) and create a Google OAuth client, GitHub
+   OAuth app, or both. Set the callback URL to
+   `<APP_ORIGIN>/auth/callback/google` and/or
+   `<APP_ORIGIN>/auth/callback/github` (locally:
+   `http://localhost:8000/auth/callback/<provider>`).
+2. Copy `.env.example` to `.env` and set:
+   - `AUTH_SECRET` to a random secret of at least 32 bytes.
+   - At least one complete provider pair: `GOOGLE_CLIENT_ID` /
+     `GOOGLE_CLIENT_SECRET` or `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+   - `APP_ORIGIN` to the exact app origin (default: `http://localhost:8000`).
+   - Optionally, `OPENROUTER_API_KEY` for a shared server-side key and
+     `OPENROUTER_MODEL` (`deepseek/deepseek-v4-flash` or
+     `deepseek/deepseek-v4-pro`). `PORT` defaults to `8000`.
+   - Leave `APP_ENV=development` locally. Set `APP_ENV=production` only on the
+     intended public HTTPS deployment to allow search indexing.
+3. Run `deno task start`, open <http://localhost:8000>, and sign in. Users can
+   enter their own OpenRouter key in **Settings** instead of using a shared key.
+
+Use `deno task dev` while developing. Self-hosted reminders require the server
+to keep running. The local Deno KV database remains at `data/planner.sqlite3`;
+OAuth identities are separate and existing Supabase data is not imported.
+
 ## Deployment
 
 For self-hosting, configure the environment above and run `deno task start`. For
@@ -117,6 +159,40 @@ GitHub Actions deploys only pushes to `dev` and `main`. Configure the
 `DENO_DEPLOY_PROJECT` repository variable and `DENO_DEPLOY_TOKEN` secret. Set
 `APP_ENV=production` in Deno Deploy's production environment; other or unset
 values show a Preview badge on Deno Deploy.
+
+### Public metadata and indexing
+
+Canonical and social-image URLs are rendered server-side from `APP_ORIGIN`,
+never the incoming Host header. The public landing copy and chat-access
+requirement are readable without JavaScript. `/social.png` is a static,
+synthetic brand card; no account or conversation content enters metadata.
+
+Only an HTTPS deployment with `APP_ENV=production`, not marked Preview, allows
+indexing of the query-free homepage. Other environments and query-bearing pages
+send `noindex, nofollow`. `/robots.txt` disallows all crawling outside
+production; production excludes `/auth/` and `/api/` and lists a one-page
+`/sitemap.xml`. Authentication/API responses also send `noindex, nofollow`.
+These directives are not authorization: existing session checks still protect
+account data.
+
+### Brand rollout
+
+Dayfold replaces the application name Personal Planner. This release does not
+rename the repository, change the domain, migrate storage, or alter account
+identities. Existing `planner` KV/browser namespaces and database paths remain
+deliberately unchanged.
+
+Before a public launch, the owner should check the name against competing
+products, trademarks in intended markets, domains, and repository availability.
+No name-clearance or availability claim is made here. Then update the GitHub
+repository description and OAuth provider display names/logos to match Dayfold.
+If renaming to `Hexagon/dayfold`, verify repository redirects, local remotes,
+documentation links, and deployment integrations; keep PRs targeting `dev`.
+
+Keep the current origin for the initial rollout. A later domain change requires
+coordinated `APP_ORIGIN`, OAuth callbacks, redirects, and indexing changes.
+Browser-stored keys, consent, and preferences do not transfer automatically to a
+different origin. Do not copy credentials or consent between accounts.
 
 ## Development
 

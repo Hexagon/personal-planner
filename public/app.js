@@ -1,4 +1,9 @@
-import { createSettings, verifyChatSession } from "./settings.js";
+import {
+  createOnboarding,
+  createSettings,
+  validTimezone,
+  verifyChatSession,
+} from "./settings.js";
 import { createUpcoming } from "./upcoming.js";
 import { reconcileHistory } from "./history.js";
 
@@ -27,6 +32,15 @@ for (const model of config.models) {
 }
 element("model").value = config.model;
 let session = null;
+const onboarding = createOnboarding();
+let detectedTimezone = null;
+try {
+  detectedTimezone = validTimezone(
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+} catch {
+  // Browser timezone detection is optional.
+}
 const upcoming = createUpcoming({ api, getOwner: () => session?.user.id });
 let busy = false;
 const settings = createSettings({
@@ -99,9 +113,68 @@ function updateKeyStatus() {
 }
 
 function updateOnboarding() {
-  element("settings").open = !element("consent").checked ||
-    (!openrouterKey && !config.serverKeyAvailable);
+  const consent = element("consent").checked;
+  const keyAvailable = !!openrouterKey || !!config.serverKeyAvailable;
+  const state = onboarding.snapshot(consent, keyAvailable);
+  element("onboarding-steps").hidden = !state.expanded;
+  element("review-setup").setAttribute("aria-expanded", String(state.expanded));
+  element("setup-status").textContent = state.canChat
+    ? "Ready to chat. Every change still needs your confirmation."
+    : state.deferred
+    ? "Setup deferred. Your conversation history and upcoming items are still available."
+    : "Review AI consent and chat access to begin. Browsing history and upcoming items needs no AI consent.";
+  element("consent-status").textContent = consent
+    ? "Accepted on this browser. Uncheck below to revoke."
+    : "Not accepted. No new chat is sent until you opt in.";
+  element("access-status").textContent = openrouterKey
+    ? element("key-status").textContent
+    : config.serverKeyAvailable
+    ? "Ready — the app provides a key. You do not need to add one."
+    : "A personal OpenRouter key is required to chat. Add it in Settings.";
+  element("setup-key").hidden = keyAvailable;
+  element("timezone-step").hidden = state.timezoneSkipped;
+  element("timezone-status").textContent = state.timezone
+    ? `Saved timezone: ${state.timezone}.${
+      detectedTimezone && state.timezone !== detectedTimezone
+        ? ` Browser suggestion: ${detectedTimezone}.`
+        : ""
+    }`
+    : "Saved timezone not yet available. Use Refresh chat to check.";
+  element("use-timezone").hidden = !detectedTimezone ||
+    detectedTimezone === state.timezone;
+  element("use-timezone").textContent = `Draft a change to ${
+    detectedTimezone ?? "your timezone"
+  }`;
 }
+function reviewSetup() {
+  onboarding.review();
+  element("settings").open = false;
+  updateOnboarding();
+  element("onboarding").scrollIntoView({ block: "start" });
+}
+function openKeySetup() {
+  element("settings").open = true;
+  element("key-setup").hidden = false;
+  element("openrouter-key").focus();
+}
+element("review-setup").onclick = reviewSetup;
+element("review-privacy").onclick = reviewSetup;
+element("setup-key").onclick = openKeySetup;
+element("setup-later").onclick = () => {
+  onboarding.defer();
+  updateOnboarding();
+  element("review-setup").focus();
+};
+element("skip-timezone").onclick = () => {
+  onboarding.skipTimezone();
+  updateOnboarding();
+  element("review-setup").focus();
+};
+element("use-timezone").onclick = () => {
+  if (!detectedTimezone) return;
+  element("prompt").value = `Set my timezone to ${detectedTimezone}.`;
+  element("prompt").focus();
+};
 
 function setSession(value) {
   const previousOwner = session?.user.id;
@@ -109,6 +182,7 @@ function setSession(value) {
     ? value
     : null;
   const saved = settings.setOwner(session?.user.id);
+  onboarding.setOwner(session?.user.id);
   openrouterKey = saved.key;
   element("consent").checked = saved.consent;
   element("model").value = saved.model;
@@ -119,6 +193,8 @@ function setSession(value) {
   element("settings").hidden = !session;
   element("logout").hidden = !session;
   if (previousOwner !== session?.user.id) {
+    element("settings").open = false;
+    element("saved-next").hidden = true;
     upcoming.reset();
     element("openrouter-key").value = "";
     updateKeyStatus();
@@ -147,6 +223,7 @@ function setSession(value) {
 }
 async function api(path, body) {
   if (!session) throw new Error("Please log in");
+  const requestOwner = session.user.id;
   let response;
   try {
     response = await fetch(path, {
@@ -182,6 +259,10 @@ async function api(path, body) {
     );
     error.status = response.status;
     throw error;
+  }
+  if (path === "/api/upcoming" && session?.user.id === requestOwner) {
+    onboarding.setTimezone(result.timezone);
+    updateOnboarding();
   }
   return result;
 }
@@ -376,7 +457,7 @@ function render(messages) {
     article.replaceChildren();
     article.className = message.role === "user" ? "user" : "assistant";
     const heading = document.createElement("strong");
-    heading.textContent = message.role === "user" ? "You" : "Planner";
+    heading.textContent = message.role === "user" ? "You" : "Dayfold";
     const content = document.createElement("div");
     content.className = "message-content";
     renderMarkdown(content, message.content);
@@ -406,7 +487,7 @@ function render(messages) {
                 notice(
                   cancel
                     ? "Proposal cancelled."
-                    : "Confirmation processed. See proposal status.",
+                    : "Confirmation processed. See the saved proposal status below.",
                 );
               }
             }, cancel ? "Cancelling proposal…" : "Confirming proposal…");
@@ -415,7 +496,12 @@ function render(messages) {
       } else {
         const state = document.createElement("p");
         state.className = "message-state";
-        state.textContent = message.action_state;
+        state.textContent = message.action_state === "confirmed"
+          ? "Saved — you confirmed this change."
+          : message.action_state;
+        if (message.action_state === "confirmed") {
+          element("saved-next").hidden = false;
+        }
         article.append(state);
       }
     }
@@ -443,7 +529,7 @@ function expirePendingProposalCards() {
     if (article.dataset.actionState !== "pending") continue;
     article.replaceChildren();
     const heading = document.createElement("strong");
-    heading.textContent = "Planner";
+    heading.textContent = "Dayfold";
     const content = document.createElement("p");
     content.textContent =
       "This proposal is no longer available. Ask again if it is still needed.";
@@ -465,6 +551,8 @@ async function refresh() {
       api(`/api/messages?history=true&cursor=${encodeURIComponent(cursor)}`),
   );
   render(history.messages);
+  onboarding.setEstablished(history.messages.length > 0);
+  updateOnboarding();
   for (const message of history.messages) historyCoverage.add(message.id);
   historyCursor = history.cursor;
   historyInitialized = true;
@@ -629,7 +717,7 @@ function temporaryMessage(role, content, className = "") {
   const article = document.createElement("article");
   article.className = `${role} ${className}`;
   const heading = document.createElement("strong");
-  heading.textContent = role === "user" ? "You" : "Planner";
+  heading.textContent = role === "user" ? "You" : "Dayfold";
   const text = document.createElement("p");
   text.textContent = content;
   article.append(heading, text);
@@ -649,20 +737,20 @@ element("chat-form").onsubmit = (event) => {
         }),
       (current) => {
         setSession(current);
-        element("settings").open = true;
+        reviewSetup();
       },
     );
     element("consent").checked = settings.syncConsent();
-    if (!element("consent").checked) element("settings").open = true;
+    updateOnboarding();
     const content = element("prompt").value.trim();
     if (!content) throw new Error("Write a message first.");
     if (!element("consent").checked) {
-      element("settings").open = true;
+      reviewSetup();
       throw new Error("Please review and accept the AI data notice first.");
     }
     if (!openrouterKey && !config.serverKeyAvailable) {
-      element("settings").open = true;
-      element("key-setup").hidden = false;
+      reviewSetup();
+      openKeySetup();
       throw new Error("Add your OpenRouter API key to start chatting.");
     }
     expirePendingProposalCards();
@@ -670,7 +758,7 @@ element("chat-form").onsubmit = (event) => {
     pendingUser = temporaryMessage("user", content);
     const thinking = temporaryMessage("assistant", "Thinking", "thinking");
     setComposerExpanded(true);
-    sendStatus("Sending your message. Planner is thinking…");
+    sendStatus("Sending your message. Dayfold is thinking…");
     element("send").setAttribute("aria-label", "Sending message");
     element("send").title = "Sending message";
     scrollToLatest();
@@ -770,11 +858,12 @@ globalThis.addEventListener("storage", (event) => {
   if (!settings.handleStorageChange(event.key)) return;
   element("consent").checked = settings.snapshot().consent;
   if (!element("consent").checked) {
-    element("settings").open = true;
+    onboarding.review();
     notice(
-      "AI consent was revoked in another tab. Review Settings before chatting.",
+      "AI consent was revoked in another tab. Review the AI data notice before chatting.",
     );
   }
+  updateOnboarding();
 });
 for (const id of ["model", "reasoning"]) {
   element(id).onchange = () => {
