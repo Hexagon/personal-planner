@@ -91,6 +91,14 @@ callback URL. Configure OAuth consent and provider-side rate limits. Add rate
 limiting at a trusted edge proxy/provider for the app's `/api/chat` and
 `/api/confirm` routes, and set provider spending limits for OpenRouter.
 
+The login page uses `Referrer-Policy: same-origin` so browser sign-in form POSTs
+retain their Origin header without sending referrers to external sites. Preserve
+this policy through any reverse proxy: `no-referrer` can cause form POSTs to
+send `Origin: null`, which the app rejects. Sign-in still requires an exact
+`APP_ORIGIN` match and a valid Auth.js CSRF token. The form-action content
+security policy also allows configured OAuth provider origins so browsers can
+follow the sign-in form's authorization redirect.
+
 The deploy entrypoint registers a native `Deno.cron` job that polls a bounded
 Deno KV due index every minute. Reminder messages and expected-occurrence
 advances are committed in one atomic KV transaction. Cron invocations are
