@@ -1,4 +1,4 @@
-import { chat } from "../src/chat.ts";
+import { chat, ChatRequestError } from "../src/chat.ts";
 import { Database } from "../src/db.ts";
 import type { Config, ReasoningMode } from "../src/config.ts";
 import { InputError, type RecordData } from "../src/validation.ts";
@@ -153,17 +153,35 @@ Deno.test("invalid provider responses and transport failures never save assistan
     envelope(valid, "length"),
     envelope(valid, "content_filter"),
   ];
-  const failures: (() => Promise<Response>)[] = [
-    ...responses.map((body) => () =>
-      Promise.resolve(new Response(JSON.stringify(body)))
-    ),
-    () =>
-      Promise.resolve(
-        new Response("provider-private-error", { status: 429 }),
-      ),
-    () => Promise.resolve(new Response("not-json")),
-    () => Promise.reject(new DOMException("Timed out", "TimeoutError")),
-    () => Promise.reject(new TypeError("Network unavailable")),
+  const failures = [
+    ...responses.map((body) => ({
+      category: "provider_invalid_response",
+      status: 502,
+      run: () => Promise.resolve(new Response(JSON.stringify(body))),
+    })),
+    {
+      category: "provider_response",
+      status: 502,
+      run: () =>
+        Promise.resolve(
+          new Response("provider-private-error", { status: 429 }),
+        ),
+    },
+    {
+      category: "provider_invalid_response",
+      status: 502,
+      run: () => Promise.resolve(new Response("not-json")),
+    },
+    {
+      category: "provider_timeout",
+      status: 504,
+      run: () => Promise.reject(new DOMException("Timed out", "TimeoutError")),
+    },
+    {
+      category: "provider_connection",
+      status: 502,
+      run: () => Promise.reject(new TypeError("Network unavailable")),
+    },
   ];
   try {
     for (const failure of failures) {
@@ -172,16 +190,24 @@ Deno.test("invalid provider responses and transport failures never save assistan
         const db = new Database(kv, owner);
         globalThis.fetch = (_input, init) => {
           assert(init?.signal instanceof AbortSignal);
-          return failure();
+          return failure.run();
         };
         let failed = false;
         try {
           await chat(db, config, "Hello");
         } catch (error) {
           failed = true;
+          assert(error instanceof ChatRequestError);
+          assert(error.status === failure.status);
+          assert(error.category === failure.category);
           assert(
             !String(error).includes("provider-private-error"),
             "Raw provider errors must not escape",
+          );
+          assert(
+            !error.message.includes("Network unavailable") &&
+              !error.message.includes("Timed out"),
+            "Raw transport errors must not escape",
           );
         }
         assert(failed, "Invalid responses must fail closed");

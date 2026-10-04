@@ -170,15 +170,22 @@ async function api(path, body) {
   try {
     result = await response.json();
   } catch {
-    throw new Error(
-      "The server returned an unexpected response. Refresh chat before retrying.",
+    const error = new Error(
+      `The server returned a non-JSON response (HTTP ${response.status}). This may be a temporary proxy or server failure. Refresh chat before retrying.`,
     );
+    error.status = response.status;
+    throw error;
   }
   if (!response.ok) {
+    const requestId = typeof result?.request_id === "string" &&
+        /^[0-9a-f-]{36}$/i.test(result.request_id)
+      ? ` Reference ID: ${result.request_id}.`
+      : "";
     const error = new Error(
-      typeof result?.error === "string"
+      (typeof result?.error === "string"
         ? result.error
-        : "Request failed. Refresh chat before retrying.",
+        : `Request failed (HTTP ${response.status}). Refresh chat before retrying.`) +
+        requestId,
     );
     error.status = response.status;
     throw error;

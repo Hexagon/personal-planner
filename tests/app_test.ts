@@ -658,7 +658,12 @@ Deno.test("chat reasoning reaches the provider and failed AI calls release the r
           ),
         );
         assert(failed.status === 502);
-        assert(!(await failed.text()).includes("private-provider-response"));
+        const failure = await failed.json();
+        assert(
+          failure.error.includes("OpenRouter is temporarily unavailable") &&
+            failure.error.includes("HTTP 503"),
+        );
+        assert(/^[0-9a-f-]{36}$/i.test(failure.request_id));
         fail = false;
         const success = await handler(
           request(
