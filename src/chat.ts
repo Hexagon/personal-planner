@@ -46,7 +46,6 @@ When the user asks what to buy, what to pick up, or what to do while going somew
 For day planning, use the open tasks' priority, urgency and location_name labels to suggest an order and grouping in your reply. Duration, cost, routes, travel time, opening hours and stock are unknown; never invent them.
 For saved settings use "settings_query":{}, proposal=null. For saved reminders use "reminder_query":{"reminder":null OR description/ID,"active":null OR boolean,"offset":0 OR next offset supplied by code}, proposal=null. Code renders authoritative saved data. Only active reminders and open tasks with due dates appear in the upcoming view.
 Proposals appear only with the reply that created them and must be confirmed with the inline buttons then. Historical proposals are unavailable; if the user asks about an older proposal, ask them to request it again. At most one proposal or query (task_query/task_detail/settings_query/reminder_query) per turn. Login, credentials and AI consent are handled outside this conversation; never propose changes to them.
-Do not provide schedules unless scheduler_enabled is true.
 `;
 
 const columns = [
@@ -118,7 +117,6 @@ export async function chat(
       cron: reminder.cron,
       timezone: reminder.timezone,
     })),
-    scheduler_enabled: true,
   };
   await db.insert("messages", { role: "user", content });
   const searchInstructions = onlineSearch
