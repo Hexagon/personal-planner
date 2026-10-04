@@ -701,11 +701,6 @@ export async function deliverReminder(
   reminder: DueReminder,
   nextRun: string,
 ): Promise<boolean> {
-  if (
-    !Number.isFinite(Date.parse(nextRun)) || Date.parse(nextRun) <= Date.now()
-  ) {
-    return false;
-  }
   const reminderKey = key("reminders", reminder.userId, reminder.id);
   const message: RecordData = {
     id: crypto.randomUUID(),
@@ -717,7 +712,7 @@ export async function deliverReminder(
     created_at: now(),
   };
   const messageKey = key("messages", reminder.userId, String(message.id));
-  const result = await kv.atomic().check(
+  const transaction = kv.atomic().check(
     { key: reminderKey, versionstamp: reminder.versionstamp },
     { key: messageKey, versionstamp: null },
   ).delete(
@@ -732,7 +727,13 @@ export async function deliverReminder(
       String(message.id),
     ),
     message.id,
-  ).commit();
+  );
+  if (
+    !Number.isFinite(Date.parse(nextRun)) || Date.parse(nextRun) <= Date.now()
+  ) {
+    return false;
+  }
+  const result = await transaction.commit();
   return result.ok;
 }
 
