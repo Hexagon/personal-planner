@@ -743,13 +743,35 @@ Deno.test("confirmation applies a task mutation once and uses a transactional ta
       content: "Add task? Confirm below.",
       proposal: {
         op: "add_task",
-        data: { name: "Bike service", short_description: "Service bikes" },
+        data: {
+          name: "Bike service",
+          short_description: "Service bikes",
+          full_description: "Replace the worn chain",
+          location_name: "Workshop",
+          priority: 4,
+          due_date: "2026-10-10",
+        },
       },
     });
     assert(await db.confirm(message.id, false));
     assert(!(await db.confirm(message.id, false)));
     const rows = await db.list("tasks");
-    assert(rows.length === 1 && rows[0].name === "Bike service");
+    assert(
+      rows.length === 1 &&
+        rows[0].name === "Bike service" &&
+        rows[0].short_description === "Service bikes" &&
+        rows[0].location_name === "Workshop" &&
+        rows[0].priority === 4 &&
+        rows[0].due_date === "2026-10-10" &&
+        rows[0].status === "open" &&
+        rows[0].user_id === owner,
+      "Confirmation must save the proposed task fields",
+    );
+    assert(
+      (await db.ownedTaskDetail(rows[0].id)).full_description ===
+        "Replace the worn chain",
+      "Confirmation must save the proposed private task details",
+    );
     assert(
       (await kv.get<RecordData>([
         "planner",
@@ -799,22 +821,46 @@ Deno.test("confirmation applies a task mutation once and uses a transactional ta
   });
 });
 
-Deno.test("confirmation saves an update_task location change", async () => {
+Deno.test("confirmation applies every requested task update field", async () => {
   await withKv(async (kv) => {
     const db = new Database(kv, owner);
     await db.ensureProfile();
     await kv.set(["planner", "tasks", owner, id(1)], task(1));
     const [message] = await db.insert("messages", {
       role: "assistant",
-      content: "Update task location?",
+      content: "Update task?",
       proposal: {
         op: "update_task",
-        data: { id: id(1), location_name: "ICA" },
+        data: {
+          id: id(1),
+          name: "Updated task",
+          short_description: "Updated summary",
+          full_description: "Updated private details",
+          location_name: "ICA",
+          priority: 5,
+          due_date: "2026-10-10",
+          status: "done",
+        },
       },
     });
 
     assert(await db.confirm(message.id, false));
-    assert((await db.owned("tasks", id(1))).location_name === "ICA");
+    const updated = await db.owned("tasks", id(1));
+    assert(
+      updated.name === "Updated task" &&
+        updated.short_description === "Updated summary" &&
+        updated.location_name === "ICA" &&
+        updated.priority === 5 &&
+        updated.due_date === "2026-10-10" &&
+        updated.status === "done" &&
+        typeof updated.completed_at === "string",
+      "Confirmation must apply the proposed task fields and status",
+    );
+    assert(
+      (await db.ownedTaskDetail(id(1))).full_description ===
+        "Updated private details",
+      "Confirmation must update the proposed private task details",
+    );
   });
 });
 
@@ -825,10 +871,21 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
     const profile = await db.insert("messages", {
       role: "assistant",
       content: "Set timezone?",
-      proposal: { op: "set_profile", data: { timezone: "Europe/Stockholm" } },
+      proposal: {
+        op: "set_profile",
+        data: {
+          timezone: "Europe/Stockholm",
+          preferences: "Plan around school pickup",
+        },
+      },
     });
     assert(await db.confirm(profile[0].id, false));
-    assert((await db.list("profiles"))[0].timezone === "Europe/Stockholm");
+    const savedProfile = (await db.list("profiles"))[0];
+    assert(
+      savedProfile.timezone === "Europe/Stockholm" &&
+        savedProfile.preferences === "Plan around school pickup",
+      "Confirmation must save each proposed profile field",
+    );
 
     const taskIds = Array.from({ length: 20 }, (_, index) => id(index + 100));
     for (let index = 0; index < taskIds.length; index++) {
@@ -893,7 +950,12 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
     assert(await db.confirm(reminder[0].id, false));
     const [savedReminder] = await db.list("reminders");
     assert(
-      savedReminder.description === "Plan" && savedReminder.active === true,
+      savedReminder.description === "Plan" &&
+        savedReminder.cron === "0 9 * * *" &&
+        savedReminder.timezone === "UTC" &&
+        typeof savedReminder.next_run === "string" &&
+        savedReminder.active === true,
+      "Confirmation must save the proposed reminder schedule",
     );
     assert((await dueReminders(kv, "2999-01-01T00:00:00.000Z")).length === 1);
 
