@@ -260,18 +260,17 @@ export async function chat(
         const target = reminders.find((reminder) =>
           reminder.id === resolution.ids![0]
         )!;
-        proposal = validateProposal({
+        const requested: RecordData = { id: target.id };
+        for (const field of ["description", "cron", "timezone", "active"]) {
+          if (data[field] !== undefined) requested[field] = data[field];
+        }
+        proposal = validateProposal({ op: raw.op, data: requested });
+        const effective = validateProposal({
           op: raw.op,
-          data: {
-            id: target.id,
-            description: data.description ?? target.description,
-            cron: data.cron ?? target.cron,
-            timezone: data.timezone ?? target.timezone,
-            active: data.active ?? target.active,
-          },
+          data: { ...target, ...proposal.data },
         });
         reply = `Update reminder "${target.description}" (${
-          proposal.data.active ? "active" : "paused"
+          effective.data.active ? "active" : "paused"
         })? Use Confirm below. Nothing has been changed.`;
       } else reply = resolution.clarification;
     } else {

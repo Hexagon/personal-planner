@@ -523,7 +523,7 @@ Deno.test("reminder changes resolve saved owners and require an explicit confirm
   const proposal = resumed.message.proposal as RecordData;
   const data = proposal.data as RecordData;
   assert(data.id === id(60) && data.active === true);
-  assert(data.cron === "0 18 * * 0");
+  assert(data.cron === undefined && data.timezone === undefined);
   assert(!resumed.modelRequest.includes("FOREIGN planning reminder"));
 
   const ambiguous = await run({

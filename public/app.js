@@ -1,5 +1,6 @@
 import { createSettings, verifyChatSession } from "./settings.js";
 import { createUpcoming } from "./upcoming.js";
+import { reconcileHistory } from "./history.js";
 
 const element = (id) => document.getElementById(id);
 const notice = (message, tone = "info") => {
@@ -442,13 +443,17 @@ async function refresh() {
   const page = await api("/api/messages?history=true");
   pendingUser?.remove();
   pendingUser = null;
-  render(page.messages);
-  if (!historyInitialized) {
-    historyCursor = page.cursor;
-    historyInitialized = true;
-  } else if (!historyCursor && page.cursor) {
-    historyCursor = page.cursor;
-  }
+  const history = await reconcileHistory(
+    page,
+    historyInitialized,
+    historyCursor,
+    new Set(renderedMessages.keys()),
+    (cursor) =>
+      api(`/api/messages?history=true&cursor=${encodeURIComponent(cursor)}`),
+  );
+  render(history.messages);
+  historyCursor = history.cursor;
+  historyInitialized = true;
   element("older-messages").disabled = !historyCursor;
   await upcomingRefresh;
 }

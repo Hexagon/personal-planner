@@ -1034,6 +1034,42 @@ Deno.test("reminders can be paused, resumed, and rescheduled through retry-safe 
     );
     assert((await dueReminders(kv, "2999-01-01T00:00:00.000Z")).length === 1);
 
+    const descriptionEdit = await db.insert("messages", {
+      role: "assistant",
+      content: "Update description?",
+      proposal: {
+        op: "update_reminder",
+        data: { id: reminderId, description: "Plan the week differently" },
+      },
+    });
+    const pauseBeforeEdit = await db.insert("messages", {
+      role: "assistant",
+      content: "Pause?",
+      proposal: {
+        op: "update_reminder",
+        data: { id: reminderId, active: false },
+      },
+    });
+    assert(await db.confirm(pauseBeforeEdit[0].id, false));
+    const newerSchedule = await db.insert("messages", {
+      role: "assistant",
+      content: "Change schedule?",
+      proposal: {
+        op: "update_reminder",
+        data: { id: reminderId, cron: "0 10 * * 1" },
+      },
+    });
+    assert(await db.confirm(newerSchedule[0].id, false));
+    assert(await db.confirm(descriptionEdit[0].id, false));
+    const latest = await db.owned("reminders", reminderId);
+    assert(
+      latest.description === "Plan the week differently" &&
+        latest.active === false &&
+        latest.cron === "0 10 * * 1" &&
+        latest.timezone === "UTC",
+      "A partial edit must preserve newer reminder state",
+    );
+
     const reschedule = await db.insert("messages", {
       role: "assistant",
       content: "Change schedule?",

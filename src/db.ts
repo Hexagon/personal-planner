@@ -667,6 +667,7 @@ export class Database {
           const cron = data.cron ?? current.cron;
           const reminderTimezone = data.timezone ?? current.timezone;
           const active = data.active ?? current.active;
+          nextOccurrence(cron, reminderTimezone);
           const scheduleChanged = cron !== current.cron ||
             reminderTimezone !== current.timezone;
           const becomingActive = active === true &&
