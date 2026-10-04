@@ -316,6 +316,10 @@ Deno.test("BYOK is used only for chat and can replace a missing server key", asy
         new Headers(init?.headers).get("Authorization") ===
           "Bearer " + userKey,
       );
+      assert(
+        JSON.parse(String(init?.body)).reasoning.enabled === false,
+        "Chat defaults to non-thinking mode",
+      );
       return Promise.resolve(
         new Response(JSON.stringify({
           choices: [{
@@ -374,6 +378,71 @@ Deno.test("BYOK is used only for chat and can replace a missing server key", asy
       assert(messages.length === 4);
       assert(
         messages.every((message) => !String(message.content).includes(userKey)),
+      );
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+Deno.test("chat reasoning reaches the provider and failed AI calls release the request slot", async () => {
+  await withKv(async (kv) => {
+    const original = globalThis.fetch;
+    const handler = createHandler(config, kv);
+    const cookie = await sessionCookie();
+    let fail = true;
+    let expected: unknown;
+    globalThis.fetch = (_input, init) => {
+      assert(
+        JSON.stringify(JSON.parse(String(init?.body)).reasoning) ===
+          JSON.stringify(expected),
+      );
+      return Promise.resolve(
+        fail
+          ? new Response("private-provider-response", { status: 503 })
+          : new Response(JSON.stringify({
+            choices: [{
+              message: {
+                content: JSON.stringify({ reply: "Hello", proposal: null }),
+              },
+            }],
+          })),
+      );
+    };
+    try {
+      for (const reasoning of ["high", "default"] as const) {
+        expected = reasoning === "high"
+          ? { effort: "high", exclude: true }
+          : undefined;
+        fail = true;
+        const failed = await handler(
+          request(
+            "/api/chat",
+            { content: "Hello", ai_consent: true, reasoning },
+            config.origin,
+            cookie,
+          ),
+        );
+        assert(failed.status === 502);
+        assert(!(await failed.text()).includes("private-provider-response"));
+        fail = false;
+        const success = await handler(
+          request(
+            "/api/chat",
+            { content: "Hello again", ai_consent: true, reasoning },
+            config.origin,
+            cookie,
+          ),
+        );
+        assert(success.status === 200);
+        const result = await success.json();
+        assert(result.timing.provider_ms >= 0);
+        assert(result.timing.application_ms >= 0);
+      }
+      const saved = await new Database(kv, owner).list("messages");
+      assert(saved.every((message) => message.timing === undefined));
+      assert(
+        saved.filter((message) => message.role === "assistant").length === 2,
       );
     } finally {
       globalThis.fetch = original;
@@ -472,6 +541,17 @@ Deno.test("consent, confirmation IDs and request bodies are validated before AI 
         ),
       )).status === 400,
     );
+    for (const reasoning of [null, false, {}, "low", "untrusted"]) {
+      const response = await handler(
+        request(
+          "/api/chat",
+          { content: "Hi", ai_consent: true, reasoning },
+          config.origin,
+          cookie,
+        ),
+      );
+      assert(response.status === 400);
+    }
     assert(
       (await handler(
         request(

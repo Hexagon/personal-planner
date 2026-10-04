@@ -1,6 +1,6 @@
 import { chat } from "../src/chat.ts";
 import { Database } from "../src/db.ts";
-import type { Config } from "../src/config.ts";
+import type { Config, ReasoningMode } from "../src/config.ts";
 import { InputError, type RecordData } from "../src/validation.ts";
 import { detailPrefix } from "../src/planner/task-context.ts";
 
@@ -39,6 +39,7 @@ interface Harness {
   history?: RecordData[];
   onModel?: (request: RecordData) => void;
   setup?: (kv: Deno.Kv, db: Database) => Promise<void>;
+  reasoning?: ReasoningMode;
 }
 async function run(harness: Harness, content: string) {
   const original = globalThis.fetch;
@@ -75,6 +76,14 @@ async function run(harness: Harness, content: string) {
       db,
       config,
       content,
+      config.model,
+      false,
+      undefined,
+      harness.reasoning,
+    );
+    assert(
+      (await db.list("messages")).every((saved) => saved.timing === undefined),
+      "Timing belongs to the response, not saved chat",
     );
     return { message, modelRequest };
   } finally {
@@ -82,6 +91,96 @@ async function run(harness: Harness, content: string) {
     await kv.close();
   }
 }
+
+Deno.test("reasoning uses OpenRouter controls and timing is not persisted", async () => {
+  for (const reasoning of ["off", "high", "default"] as const) {
+    const { message } = await run({
+      tasks: [],
+      output: { reply: "Hello", proposal: null },
+      reasoning,
+      onModel: (request) => {
+        const expected = reasoning === "default"
+          ? undefined
+          : reasoning === "off"
+          ? { enabled: false }
+          : { effort: "high", exclude: true };
+        assert(
+          JSON.stringify(request.reasoning) === JSON.stringify(expected),
+        );
+        assert(request.max_tokens === 1800);
+      },
+    }, "Hello");
+    const timing = message.timing as RecordData;
+    assert(Number.isInteger(timing.provider_ms));
+    assert(Number(timing.provider_ms) >= 0);
+    assert(Number.isInteger(timing.application_ms));
+    assert(Number(timing.application_ms) >= 0);
+  }
+});
+
+Deno.test("invalid provider responses and transport failures never save assistant proposals", async () => {
+  const original = globalThis.fetch;
+  const valid = JSON.stringify({ reply: "Hello", proposal: null });
+  const envelope = (content: unknown, finish_reason = "stop") => ({
+    choices: [{ finish_reason, message: { content } }],
+  });
+  const responses = [
+    {},
+    { choices: [] },
+    { choices: [{ message: {} }] },
+    envelope(null),
+    envelope(42),
+    envelope(""),
+    envelope("```json\n" + valid + "\n```"),
+    envelope('{"reply":"unfinished'),
+    envelope("[]"),
+    envelope("null"),
+    envelope(valid, "length"),
+    envelope(valid, "content_filter"),
+  ];
+  const failures: (() => Promise<Response>)[] = [
+    ...responses.map((body) => () =>
+      Promise.resolve(new Response(JSON.stringify(body)))
+    ),
+    () =>
+      Promise.resolve(
+        new Response("provider-private-error", { status: 429 }),
+      ),
+    () => Promise.resolve(new Response("not-json")),
+    () => Promise.reject(new DOMException("Timed out", "TimeoutError")),
+    () => Promise.reject(new TypeError("Network unavailable")),
+  ];
+  try {
+    for (const failure of failures) {
+      const kv = await Deno.openKv(":memory:");
+      try {
+        const db = new Database(kv, owner);
+        globalThis.fetch = (_input, init) => {
+          assert(init?.signal instanceof AbortSignal);
+          return failure();
+        };
+        let failed = false;
+        try {
+          await chat(db, config, "Hello");
+        } catch (error) {
+          failed = true;
+          assert(
+            !String(error).includes("provider-private-error"),
+            "Raw provider errors must not escape",
+          );
+        }
+        assert(failed, "Invalid responses must fail closed");
+        const saved = await db.list("messages");
+        assert(saved.length === 1 && saved[0].role === "user");
+        assert((await db.list("tasks")).length === 0);
+      } finally {
+        await kv.close();
+      }
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 async function rejects(promise: Promise<unknown>, text?: string) {
   try {
     await promise;
@@ -501,6 +600,20 @@ Deno.test("update/delete resolve finished tasks by user reference and clarify am
 Deno.test("saved query shapes and one-operation boundary reject malformed model output", async () => {
   for (
     const output of [
+      { reply: null },
+      { reply: "" },
+      { proposal: { op: "run_sql", data: {} } },
+      { proposal: { op: "add_task", data: { name: "Missing summary" } } },
+      {
+        proposal: {
+          op: "add_task",
+          data: {
+            name: "Bad date",
+            short_description: "Bad",
+            due_date: "2026-02-30",
+          },
+        },
+      },
       { settings_query: { user_id: owner } },
       { reminder_query: { active: "true" } },
       { proposal_query: { cursor: "invalid" } },

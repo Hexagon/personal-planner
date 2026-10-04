@@ -46,14 +46,18 @@ family's context; there is no cross-account household sharing.
    Open <http://localhost:8000> and sign in with a configured provider. The
    first sign-in creates that provider identity's planner account; subsequent
    sign-ins must use the same provider. Enter a personal OpenRouter key in chat
-   to use it for the current browser tab. It is held in tab session storage and
-   sent through the app to OpenRouter, but is not saved to the planner account.
-   The key-entry box hides once you save a personal key, including after a
-   refresh in the same tab. Use **Change key** to replace it or **Clear my key**
-   to show setup again. OpenRouter usage is billed to the account for the key
-   used. Use `deno task dev` during development. Self-hosted deployments need a
-   continuously running process for Croner reminders; for Deno Deploy, follow
-   the deployment instructions below.
+   in **Settings** to use it for the current browser tab. By default it is held
+   in account-scoped tab session storage and cleared on logout/session expiry.
+   Opt into **Remember this key on this device** to keep it across browser
+   sessions in account-scoped local storage. Do not enable this on a shared
+   device: scripts running on this origin can read browser-stored keys. **Clear
+   my key** removes both tab and remembered copies for this account. Keys are
+   sent through the app to OpenRouter, but never saved by the server. The
+   key-entry box hides once you save a personal key, including after a refresh
+   in the same tab. Use **Change key** to replace it. OpenRouter usage is billed
+   to the account for the key used. Use `deno task dev` during development.
+   Self-hosted deployments need a continuously running process for Croner
+   reminders; for Deno Deploy, follow the deployment instructions below.
 
 The local Deno KV database is stored in `data/planner.sqlite3`; it is created
 automatically and ignored by Git. Each OAuth provider identity has its own
@@ -70,6 +74,11 @@ lint rules, or tests individually. `deno task check` runs all three along with
 type checks for both server entrypoints and the browser app. GitHub Actions runs
 the same checks on pushes and pull requests. Tests use in-memory Deno KV and
 mock the AI provider; no credentials, network access, or Docker are required.
+Tests cover valid and invalid proposals/queries, malformed and truncated JSON,
+missing provider content, provider/transport failures, reasoning request
+controls, and account-scoped browser settings. They do not measure live model
+quality or latency; OAuth and live OpenRouter integration still require manual
+testing.
 
 ### Deno Deploy
 
@@ -86,12 +95,13 @@ ensure the deployment includes `public/`, which the server reads to serve the
 login and chat pages. Configure `AUTH_SECRET`, at least one complete OAuth
 client pair, and `APP_ORIGIN` as server-side environment variables or secrets.
 Set `OPENROUTER_API_KEY` for an optional shared server-side key; otherwise users
-provide their own in the chat UI. Personal keys are stored only in the current
-browser tab's session storage and are forwarded to OpenRouter for chat. Set
-`APP_ORIGIN` to the exact HTTPS origin and register the matching provider
-callback URL. Configure OAuth consent and provider-side rate limits. Add rate
-limiting at a trusted edge proxy/provider for the app's `/api/chat` and
-`/api/confirm` routes, and set provider spending limits for OpenRouter.
+provide their own in Settings. Personal keys use account-scoped tab storage by
+default, or persistent device storage with explicit opt-in, and are forwarded to
+OpenRouter for chat; the server does not save them. Set `APP_ORIGIN` to the
+exact HTTPS origin and register the matching provider callback URL. Configure
+OAuth consent and provider-side rate limits. Add rate limiting at a trusted edge
+proxy/provider for the app's `/api/chat` and `/api/confirm` routes, and set
+provider spending limits for OpenRouter.
 
 The login page uses `Referrer-Policy: same-origin` so browser sign-in form POSTs
 retain their Origin header without sending referrers to external sites. Preserve
@@ -116,6 +126,37 @@ Use **Refresh chat** and review the conversation before resending, since a
 connection error does not mean the server did not receive the message. A
 received reply is shown even if refreshing the rest of the history fails. Task
 and schedule proposals still require their inline confirmation buttons.
+
+**Settings** opens during onboarding until AI consent is accepted and a personal
+or app-provided key is available, then collapses to keep chat uncluttered.
+Reopen it to change the model/key or revoke consent. Consent is versioned and
+remembered on this browser per signed-in account, independently of the key
+opt-in; a changed notice version requires acceptance again. Model and reasoning
+choices are also remembered per account. If browser storage is unavailable,
+settings work in memory but cannot be remembered reliably. Consent revocation is
+synchronized across tabs and checked again before sending; changing model
+preferences cannot restore revoked consent. Before sending, the app also
+rechecks the signed-in account and rejects stale-tab account changes without
+forwarding the previous account's key or draft.
+
+Reasoning defaults to **Off** (OpenRouter `reasoning.enabled: false`) for faster
+direct answers. **High** requests `reasoning.effort: "high"` and excludes
+returned reasoning traces; **Provider default** omits reasoning controls. Both
+allowlisted DeepSeek V4 models support thinking/non-thinking modes. See
+[OpenRouter reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)
+and
+[DeepSeek thinking modes](https://api-docs.deepseek.com/guides/thinking_mode/).
+Routing/provider support and load can vary; lower reasoning does not guarantee a
+particular response time. Online search may add latency too.
+
+Successful replies include transient timing measurements: **provider** covers
+the OpenRouter fetch and response-body parsing (including network/search time),
+while **application** covers saved-context preparation, validation and storage.
+Browser round-trip measures the chat request, including network and request
+overhead but excluding the sign-in preflight and subsequent history refresh.
+Compare these measurements across reasoning modes before attributing slow
+replies to reasoning. Timings are not stored in chat history; no keys, chat text
+or raw provider responses are logged for measurement.
 
 - “Set my timezone to Europe/Stockholm.”
 - “Remember that I should buy milk at ICA.”

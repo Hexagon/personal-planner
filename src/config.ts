@@ -14,6 +14,14 @@ export const availableModels = [
   { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
 ] as const;
 
+export const reasoningModes = ["off", "high", "default"] as const;
+export type ReasoningMode = typeof reasoningModes[number];
+
+export function isReasoningMode(value: unknown): value is ReasoningMode {
+  return typeof value === "string" &&
+    reasoningModes.some((mode) => mode === value);
+}
+
 export function isAvailableModel(
   value: unknown,
 ): value is typeof availableModels[number]["id"] {

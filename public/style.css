@@ -130,12 +130,19 @@ label {
   padding: .45rem;
 }
 .key-setup,
-.privacy {
+.privacy,
+#settings {
   border: 1px solid var(--line);
   border-radius: 1rem;
   padding: 1rem;
   margin: 1rem 0;
   background: var(--surface);
+}
+#settings > summary {
+  font-weight: 600;
+}
+#settings .chat-toolbar {
+  margin-top: .75rem;
 }
 .key-setup button {
   margin-top: .75rem;
