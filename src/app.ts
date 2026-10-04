@@ -2,7 +2,7 @@ import { availableModels, type Config, isAvailableModel } from "./config.ts";
 import { authenticate, AuthError, handleAuth } from "./auth.ts";
 import { Database } from "./db.ts";
 import { chat } from "./chat.ts";
-import { InputError, object } from "./validation.ts";
+import { InputError, object, text } from "./validation.ts";
 
 export function createHandler(config: Config, kv: Deno.Kv) {
   const active = new Set<string>();
@@ -55,6 +55,7 @@ export function createHandler(config: Config, kv: Deno.Kv) {
           schedulerEnabled: true,
           model: config.model,
           models: availableModels,
+          serverKeyAvailable: !!config.openrouterKey,
           providers: [
             ...(config.googleClientId
               ? [{ id: "google", name: "Google" }]
@@ -126,8 +127,21 @@ export function createHandler(config: Config, kv: Deno.Kv) {
           if (!isAvailableModel(model)) {
             throw new InputError("Choose a supported model");
           }
+          const userKey = body.openrouter_key === undefined
+            ? undefined
+            : text(body.openrouter_key, 512);
+          if (!userKey && !config.openrouterKey) {
+            throw new InputError("Add an OpenRouter API key to continue");
+          }
           return json(
-            await chat(db, config, body.content, model, body.online_search),
+            await chat(
+              db,
+              config,
+              body.content,
+              model,
+              body.online_search,
+              userKey as string | undefined,
+            ),
           );
         }
         if (typeof body.cancel !== "boolean") {

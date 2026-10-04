@@ -88,6 +88,7 @@ Deno.test("public config is safe; APIs require same-origin requests and a valid 
     assert(!publicConfig.includes("github-secret"));
     assert(!publicConfig.includes("server-placeholder"));
     assert(publicConfig.includes("deepseek/deepseek-v4-pro"));
+    assert(publicConfig.includes('"serverKeyAvailable":true'));
     assert(publicConfig.includes('"id":"google"'));
     assert(publicConfig.includes('"id":"github"'));
     assert(
@@ -122,6 +123,7 @@ Deno.test("public config is safe; APIs require same-origin requests and a valid 
       maxAge: -1,
       token: { sub: owner },
     });
+
     assert(
       (await handler(
         request(
@@ -133,6 +135,82 @@ Deno.test("public config is safe; APIs require same-origin requests and a valid 
       )).status === 401,
       "Expired Auth.js sessions must be rejected",
     );
+  });
+});
+
+Deno.test("BYOK is used only for chat and can replace a missing server key", async () => {
+  await withKv(async (kv) => {
+    const original = globalThis.fetch;
+    const userKey = "test-user-key-for-byok-request-only";
+    const noServerKey = { ...config, openrouterKey: undefined };
+    globalThis.fetch = (input, init) => {
+      assert(String(input).includes("openrouter.ai"));
+      assert(
+        new Headers(init?.headers).get("Authorization") ===
+          "Bearer " + userKey,
+      );
+      return Promise.resolve(
+        new Response(JSON.stringify({
+          choices: [{
+            message: {
+              content: JSON.stringify({ reply: "Hello", proposal: null }),
+            },
+          }],
+        })),
+      );
+    };
+    try {
+      const handler = createHandler(noServerKey, kv);
+      const publicConfig =
+        await (await handler(new Request(`${config.origin}/api/config`)))
+          .json();
+      assert(publicConfig.serverKeyAvailable === false);
+      const cookie = await sessionCookie();
+      const missingKey = await handler(
+        request(
+          "/api/chat",
+          { content: "Hi", ai_consent: true },
+          config.origin,
+          cookie,
+        ),
+      );
+      assert(missingKey.status === 400);
+      const invalidKey = await handler(
+        request(
+          "/api/chat",
+          { content: "Hi", ai_consent: true, openrouter_key: 123 },
+          config.origin,
+          cookie,
+        ),
+      );
+      assert(invalidKey.status === 400);
+      const response = await handler(
+        request(
+          "/api/chat",
+          { content: "Hi", ai_consent: true, openrouter_key: userKey },
+          config.origin,
+          cookie,
+        ),
+      );
+      assert(response.status === 200);
+      assert(!(await response.text()).includes(userKey));
+      const overrideResponse = await createHandler(config, kv)(
+        request(
+          "/api/chat",
+          { content: "Hello again", ai_consent: true, openrouter_key: userKey },
+          config.origin,
+          cookie,
+        ),
+      );
+      assert(overrideResponse.status === 200);
+      const messages = await new Database(kv, owner).list("messages");
+      assert(messages.length === 4);
+      assert(
+        messages.every((message) => !String(message.content).includes(userKey)),
+      );
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });
 

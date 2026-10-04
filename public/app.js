@@ -9,10 +9,19 @@ for (const model of config.models) {
 element("model").value = config.model;
 let session = null;
 let busy = false;
+let openrouterKey = sessionStorage.getItem("openrouter-key") ?? "";
 const renderedMessages = new Map();
 const notice = (message) => {
   element("notice").textContent = message;
 };
+
+function updateKeyStatus() {
+  element("key-status").textContent = openrouterKey
+    ? "Using your key for this tab."
+    : config.serverKeyAvailable
+    ? "Using the app-provided key. You can use your own instead."
+    : "Add your OpenRouter key to start chatting.";
+}
 
 function setSession(value) {
   session = value?.user?.id ? value : null;
@@ -20,9 +29,14 @@ function setSession(value) {
   element("chat").hidden = !session;
   element("logout").hidden = !session;
   if (!session) {
+    sessionStorage.removeItem("openrouter-key");
+    openrouterKey = "";
+    element("openrouter-key").value = "";
+    updateKeyStatus();
     element("messages").replaceChildren();
     renderedMessages.clear();
   }
+  updateKeyStatus();
 }
 async function api(path, body) {
   if (!session) throw new Error("Please log in");
@@ -194,6 +208,33 @@ for (const provider of config.providers) {
   };
   element("auth-providers").append(button);
 }
+element("save-key").onclick = () => {
+  const key = element("openrouter-key").value.trim();
+  if (!key) {
+    notice("Enter your OpenRouter API key first.");
+    return;
+  }
+  if (key.length > 512) {
+    notice("OpenRouter API keys must be 512 characters or fewer.");
+    return;
+  }
+  openrouterKey = key;
+  sessionStorage.setItem("openrouter-key", key);
+  element("openrouter-key").value = "";
+  updateKeyStatus();
+  notice("Your key will be used for chat in this tab only.");
+};
+element("clear-key").onclick = () => {
+  sessionStorage.removeItem("openrouter-key");
+  openrouterKey = "";
+  element("openrouter-key").value = "";
+  updateKeyStatus();
+  notice(
+    config.serverKeyAvailable
+      ? "Your key was cleared. The app-provided key will be used."
+      : "Your key was cleared. Add a key to continue chatting.",
+  );
+};
 element("logout").onclick = () =>
   action(async () => {
     const token = await csrfToken();
@@ -220,6 +261,7 @@ element("chat-form").onsubmit = (event) => {
       model: element("model").value,
       ai_consent: true,
       online_search: element("online-search").checked,
+      ...(openrouterKey ? { openrouter_key: openrouterKey } : {}),
     });
     element("prompt").value = "";
     element("online-search").checked = false;
@@ -227,6 +269,14 @@ element("chat-form").onsubmit = (event) => {
     notice("");
   });
 };
+const authError = new URLSearchParams(location.search).get("error");
+if (authError === "OAuthAccountNotLinked") {
+  notice(
+    "This account uses a different sign-in provider. Use the provider you originally chose; accounts are not automatically linked.",
+  );
+} else if (authError) {
+  notice("Sign-in could not be completed. Please try again.");
+}
 try {
   const response = await fetch("/auth/session", { credentials: "same-origin" });
   if (response.ok) {
