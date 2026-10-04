@@ -72,13 +72,14 @@ mock the AI provider; no credentials, network access, or Docker are required.
 ### Deno Deploy
 
 Create a Deno Deploy project from this repository, create and assign the named
-Deno KV database `planner-db`, and set `src/deploy.ts` as its entrypoint. The
-Deploy entrypoint opens that database automatically; self-hosted runs continue
-to use the local `data/planner.sqlite3` database. No frontend build is required;
-ensure the deployment includes `public/`, which the server reads to serve the
-login and chat pages. Configure `AUTH_SECRET`, at least one complete OAuth
-client pair, and `APP_ORIGIN` as server-side environment variables or secrets.
-Set `OPENROUTER_API_KEY` for an optional shared server-side key; otherwise users
+Deno KV database `planner-db`, and set `src/deploy.ts` as its entrypoint. If
+`src/main.ts` is used instead, it detects Deno Deploy and opens the same named
+database rather than the local SQLite path. Self-hosted runs continue to use the
+local `data/planner.sqlite3` database. No frontend build is required; ensure the
+deployment includes `public/`, which the server reads to serve the login and
+chat pages. Configure `AUTH_SECRET`, at least one complete OAuth client pair,
+and `APP_ORIGIN` as server-side environment variables or secrets. Set
+`OPENROUTER_API_KEY` for an optional shared server-side key; otherwise users
 provide their own in the chat UI. Personal keys are stored only in the current
 browser tab's session storage and are forwarded to OpenRouter for chat. Set
 `APP_ORIGIN` to the exact HTTPS origin and register the matching provider
