@@ -189,6 +189,29 @@ Deno.test("public config is safe; APIs require same-origin requests and a valid 
       )).status === 403,
       "Cross-origin Auth.js POSTs must be rejected",
     );
+    const callback = await handler(
+      new Request(`${config.origin}/auth/callback/google`, {
+        method: "POST",
+        headers: {
+          Origin: "https://accounts.google.com",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams(),
+      }),
+    );
+    assert(
+      callback.status !== 403,
+      "OAuth callback POSTs must reach Auth.js for its state validation",
+    );
+    assert(
+      (await handler(
+        new Request(`${config.origin}/auth/callback/unknown`, {
+          method: "POST",
+          headers: { Origin: "https://attacker.example" },
+        }),
+      )).status === 403,
+      "Unconfigured OAuth callback POSTs must remain same-origin only",
+    );
     const cookie = await sessionCookie();
     const messages = await handler(
       request("/api/messages", undefined, undefined, cookie),
