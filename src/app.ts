@@ -37,6 +37,7 @@ export function createHandler(
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/settings.js": ["settings.js", "text/javascript; charset=utf-8"],
     "/upcoming.js": ["upcoming.js", "text/javascript; charset=utf-8"],
+    "/history.js": ["history.js", "text/javascript; charset=utf-8"],
     "/style.css": ["style.css", "text/css; charset=utf-8"],
     "/icon.svg": ["icon.svg", "image/svg+xml"],
   };
@@ -130,6 +131,16 @@ export function createHandler(
             }
             const message = await db.ownedMessage(params.get("id"));
             return json(message ? [message] : []);
+          }
+          if (params.has("history")) {
+            if (
+              params.get("history") !== "true" ||
+              [...params.keys()].some((name) =>
+                !["history", "cursor"].includes(name)
+              )
+            ) throw new InputError("Invalid history query");
+            const page = await db.messagePage(params.get("cursor"));
+            return json({ ...page, messages: page.messages.reverse() });
           }
           if (
             [...params.keys()].some((name) =>

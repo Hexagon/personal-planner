@@ -1,6 +1,7 @@
 import {
   InputError,
   maxOpenTasks,
+  nextOccurrence,
   object,
   type Proposal,
   type RecordData,
@@ -224,6 +225,7 @@ function checkedProposal(value: unknown): Proposal {
     delete_task: ["id"],
     set_profile: ["timezone", "preferences"],
     add_reminder: ["description", "cron", "timezone", "next_run"],
+    update_reminder: ["id", "description", "cron", "timezone", "active"],
     delete_reminder: ["id"],
   };
   const fields = allowed[String(proposal.op)];
@@ -639,7 +641,10 @@ export class Database {
             created_at: profileEntry.value?.created_at ?? timestamp,
           },
         });
-      } else if (proposal.op === "delete_reminder") {
+      } else if (
+        proposal.op === "delete_reminder" ||
+        proposal.op === "update_reminder"
+      ) {
         const reminderKey = key("reminders", this.userId, String(data.id));
         const reminderEntry = await this.kv.get<RecordData>(reminderKey);
         if (!reminderEntry.value) {
@@ -649,15 +654,51 @@ export class Database {
           key: reminderKey,
           versionstamp: reminderEntry.versionstamp,
         });
-        writes.push({ type: "delete", key: reminderKey });
-        writes.push({
-          type: "delete",
-          key: dueKey(
-            String(reminderEntry.value.next_run),
-            this.userId,
-            String(data.id),
-          ),
-        });
+        const current = reminderEntry.value;
+        const oldDueKey = dueKey(
+          String(current.next_run),
+          this.userId,
+          String(data.id),
+        );
+        if (proposal.op === "delete_reminder") {
+          writes.push({ type: "delete", key: reminderKey });
+          writes.push({ type: "delete", key: oldDueKey });
+        } else {
+          const cron = data.cron ?? current.cron;
+          const reminderTimezone = data.timezone ?? current.timezone;
+          const active = data.active ?? current.active;
+          nextOccurrence(cron, reminderTimezone);
+          const scheduleChanged = cron !== current.cron ||
+            reminderTimezone !== current.timezone;
+          const becomingActive = active === true &&
+            current.active !== true;
+          const nextRun = active === true &&
+              (scheduleChanged || becomingActive)
+            ? nextOccurrence(cron, reminderTimezone)
+            : current.next_run;
+          const reminder = {
+            ...current,
+            ...data,
+            cron,
+            timezone: reminderTimezone,
+            active,
+            next_run: nextRun,
+            updated_at: timestamp,
+          };
+          writes.push({ type: "delete", key: oldDueKey });
+          writes.push({ type: "set", key: reminderKey, value: reminder });
+          if (reminder.active === true) {
+            writes.push({
+              type: "set",
+              key: dueKey(
+                String(reminder.next_run),
+                this.userId,
+                String(data.id),
+              ),
+              value: String(data.id),
+            });
+          }
+        }
       } else if (proposal.op === "add_reminder") {
         const reminderId = crypto.randomUUID();
         const reminder: RecordData = {

@@ -42,8 +42,11 @@
               </div>
               <p id="upcoming-status" class="hint" role="status">Loading…</p>
               <div id="upcoming-list"></div>
-              <p class="hint">Saved tasks and each reminder’s next occurrence.
-                Make changes in chat; nothing here changes your planner.</p>
+              <p
+                class="hint">Only open tasks with due dates and active reminders
+                appear here. Completed/cancelled or undated tasks and paused
+                reminders are omitted. Make changes in chat; nothing here
+                changes your planner.</p>
               <button id="refresh-upcoming" class="secondary"
                 type="button">Refresh</button>
             </div>
@@ -93,6 +96,9 @@
                 <p
                   class="hint">Consent and model/reasoning preferences are remembered for
                 this signed-in account on this browser. Uncheck to revoke AI consent.</p>
+                <p
+                  class="hint">There is no in-app data export or account deletion.
+                  Removing your sign-in identity does not delete planner data.</p>
               </div>
             </div>
           </details>
@@ -116,8 +122,8 @@
           simple chat. See what is coming up, and review every change before it
           is saved.</p>
         <p>Sign in or create an account with a provider below. Use the same
-          provider each time. Your planner is personal; accounts are kept
-          separate.</p>
+        provider each time. Each provider identity is a separate personal
+        planner account; identities cannot be linked or shared.</p>
         <div id="auth-providers"></div>
         <section class="landing-details" aria-labelledby="planner-benefits">
           <h3 id="planner-benefits">A calmer way to plan your day</h3>
@@ -159,7 +165,11 @@
         </div>
         <div id="messages" role="log" aria-live="polite"
           aria-relevant="additions" aria-label="Conversation"></div>
-        <div class="history-tools">
+        <div class="history-tools" aria-label="Conversation history">
+          <button id="older-messages" class="secondary"
+            type="button">Load older messages</button>
+          <button id="latest-messages" class="secondary"
+            type="button">Jump to latest</button>
           <button id="older-pending" class="secondary"
             type="button">Find older pending proposals</button>
           <button id="refresh-chat" class="secondary"
@@ -201,7 +211,7 @@
           </div>
         </form>
         <p
-          class="hint">All task and schedule changes need an inline confirmation.</p>
+          class="hint">All task and schedule changes need an inline confirmation. Use chat to view open, done, or cancelled tasks; reopening a task also needs confirmation.</p>
       </section>
     </main>
   </body>

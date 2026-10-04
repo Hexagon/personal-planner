@@ -23,6 +23,9 @@ separate—there is no household sharing between accounts.
 3. Run `deno task start`, open <http://localhost:8000>, and sign in. Users can
    enter their own OpenRouter key in **Settings** instead of using a shared key.
 
+Each OAuth provider identity is a separate planner account. Use the same
+provider each time; accounts cannot be linked or shared.
+
 Use `deno task dev` while developing. Self-hosted reminders require the server
 to keep running. The local Deno KV database is created at
 `data/planner.sqlite3`; OAuth identities are separate and existing Supabase data
@@ -33,8 +36,8 @@ is not imported.
 Accept the AI data notice in **Settings** before sending a message. Ask in plain
 language to create, update, complete, cancel, or delete tasks; set preferences;
 or create reminders. Review each structured proposal and choose **Confirm** or
-**Cancel**. Mutations are never applied before confirmation. Ambiguous task
-references need clarification.
+**Cancel**. Mutations are never applied before confirmation. Ambiguous task or
+reminder references need clarification.
 
 Tasks have a name, AI-written short description, optional user-written full
 description and location, priority (1–5), optional due date, status, and
@@ -45,17 +48,26 @@ saved records. Up to 300 open tasks are supported. Example requests:
 - “Remember that I should buy milk at ICA.”
 - “Add car service at the garage, priority 4, due Friday.”
 - “What’s urgent?” or “What’s at ICA?”
+- “Show my completed tasks,” “Show cancelled tasks,” or “Reopen [task name].”
 - “Remind me every Sunday at 18:00 to plan our week, in Europe/Stockholm.”
+- “Pause my Sunday planning reminder,” “Resume it,” or “Change it to Mondays.”
 
 Reminders use five-field cron schedules and IANA timezones. They appear in chat,
-not as email or push notifications. Scheduled work only posts the reminder; it
-does not invoke AI or change tasks unattended.
+not as email or push notifications. They are checked once per minute, so
+delivery can be delayed by hosting availability. Scheduled work only posts the
+reminder; it does not invoke AI or change tasks unattended. If the server is
+unavailable, at most one catch-up message is posted for each overdue reminder
+when service resumes; older missed occurrences are skipped. Pause, resume,
+reschedule, edit, and delete reminders in chat, and confirm each proposed
+change.
 
 The **alarm icon** beside Settings opens all saved active reminders (their next
 occurrence) and open tasks with due dates, grouped into Overdue, Today,
 Tomorrow, and Later. Task dates and groups use your saved timezone (UTC until
 set); reminder times show their own saved timezone. Completed/cancelled tasks,
-undated tasks, disabled reminders, and unconfirmed proposals are not shown.
+undated tasks, paused reminders, and unconfirmed proposals are not shown. Ask in
+chat for open, completed, or cancelled tasks; reopening a task is a proposed
+change and needs confirmation.
 
 A compact **On your radar** pane stays above chat when tasks are overdue or due
 today, or reminders are awaiting delivery or coming within 24 hours. It shows up
@@ -80,6 +92,10 @@ for changes.
 - Personal OpenRouter keys are forwarded to OpenRouter but never saved by the
   server. They use account-scoped tab storage by default; remembering a key on
   the device is an explicit opt-in and is not recommended on shared devices.
+- The app currently has no in-app data export or account-data deletion. Removing
+  an OAuth identity does not remove planner data. Self-hosters manage the local
+  `data/planner.sqlite3` database themselves; deployed data requires action by
+  the deployment operator.
 - Locations are plain labels: the planner does not provide routes, store
   details, opening hours, or inventory. It cannot purchase anything or track
   money, budgets, costs, or durations.

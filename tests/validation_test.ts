@@ -247,3 +247,42 @@ Deno.test("reminder next run is computed in code, not accepted from AI", () => {
   }, new Date("2026-01-01T00:00:00Z"));
   equal(proposal.data.next_run, "2026-01-01T09:00:00.000Z");
 });
+
+Deno.test("reminder updates validate schedule, state, and target", () => {
+  equal(
+    validateProposal({
+      op: "update_reminder",
+      data: {
+        id,
+        description: "Weekly planning",
+        cron: "0 18 * * 1",
+        timezone: "Europe/Stockholm",
+        active: false,
+        next_run: "model-controlled",
+      },
+    }),
+    {
+      op: "update_reminder",
+      data: {
+        id,
+        description: "Weekly planning",
+        cron: "0 18 * * 1",
+        timezone: "Europe/Stockholm",
+        active: false,
+      },
+    },
+  );
+  rejects(() =>
+    validateProposal({
+      op: "update_reminder",
+      data: { id, active: "false" },
+    })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "update_reminder",
+      data: { id, cron: "not a schedule", timezone: "UTC" },
+    })
+  );
+  rejects(() => validateProposal({ op: "update_reminder", data: { id } }));
+});

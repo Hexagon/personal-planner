@@ -38,15 +38,15 @@ Supported actions and data:
 add_task: name,short_description,full_description?,location_name,priority,due_date.
 update_task: task (the user's name or ID reference, copied without guessing) plus changed fields only, from name,short_description,full_description,location_name,priority,due_date,status(open/done/cancelled). Whenever full_description changes, also provide a new short_description.
 complete_tasks: items(array of 1-20 task references from the user's statement, using task names or IDs). Code resolves references against open tasks; do not replace an ambiguous reference with a guessed name or ID.
-delete_task: task (user's name or ID). delete_reminder: reminder (user's description or ID).
+delete_task: task (user's name or ID). delete_reminder: reminder (user's description or ID). update_reminder: reminder (description or ID) plus changed fields from description, cron, timezone, active(boolean). Pause/resume by setting active false/true. Always propose the requested change; it needs confirmation.
 set_profile: changed fields only from timezone(IANA),preferences.
-add_reminder: description,cron(five fields, no seconds),timezone(IANA). Reminders are timed chat messages; "remember to buy milk" is a task, not a reminder.
+add_reminder: description,cron(five fields, no seconds),timezone(IANA). Reminders are timed chat messages; "remember to buy milk" is a task, not a reminder. Inactive reminders do not run; resuming or changing an active schedule starts at its next future occurrence.
 Ask for clarification when a task name is ambiguous. You cannot see full descriptions; if one is needed, say so (or use task_detail) instead of guessing.
 For "show details of X" return "task_detail":{"task":"name or ID"}, proposal=null. Code shows the saved details to the user without sending them to you.
-For task lists return "task_query":{"location_name":null OR a place label,"due_date":null OR an exact YYYY-MM-DD date in the profile timezone,"urgency":null OR an array from overdue/today/soon/later/none,"status":"open" OR "done" OR "cancelled"}, proposal=null. "What's urgent?" uses ["overdue","today","soon"]. Code renders matching saved records and replaces your reply.
+For task lists return "task_query":{"location_name":null OR a place label,"due_date":null OR an exact YYYY-MM-DD date in the profile timezone,"urgency":null OR an array from overdue/today/soon/later/none,"status":"open" OR "done" OR "cancelled"}, proposal=null. "What's urgent?" uses ["overdue","today","soon"]. Code renders matching saved records and replaces your reply. Users can ask for done or cancelled tasks and may reopen a task by explicitly requesting its status be open; reopening needs confirmation.
 When the user asks what to buy, what to pick up, or what to do while going somewhere, prefer a concise checklist of existing open tasks: filter by the named place when it matches a saved location, or list all open tasks grouped by saved location when no place is given. For a specific day, use due_date; for broad time periods, use urgency only when it accurately matches. Never invent shopping items, imply unsaved items are on a saved list, or infer a new task from a question. If the intended place or date is ambiguous, ask a brief clarification. The exact task list is authoritative; prioritize it using its saved priority and due-date urgency.
 For day planning, use the open tasks' priority, urgency and location_name labels to suggest an order and grouping in your reply. Duration, cost, routes, travel time, opening hours and stock are unknown; never invent them.
-For saved settings use "settings_query":{}, proposal=null. For saved reminders use "reminder_query":{"reminder":null OR description/ID,"active":null OR boolean,"offset":0 OR next offset supplied by code}, proposal=null. Code renders authoritative saved data.
+For saved settings use "settings_query":{}, proposal=null. For saved reminders use "reminder_query":{"reminder":null OR description/ID,"active":null OR boolean,"offset":0 OR next offset supplied by code}, proposal=null. Code renders authoritative saved data. Only active reminders and open tasks with due dates appear in the upcoming view.
 For pending proposals use "proposal_query":{"id":null OR proposal ID,"cursor":null OR the pagination cursor supplied by code}, proposal=null. Code renders saved confirmation status and returns usable cards. Proposal states in context are a bounded recent sample, not all pending proposals. Pending proposals are NOT saved tasks/settings/reminders. Never confirm or cancel through chat/model output; tell the user to use the inline buttons. To find older proposals ask for the next page using the exact cursor. Never infer that a missing proposal was confirmed.
 At most one proposal or query (task_query/task_detail/settings_query/reminder_query/proposal_query) per turn. Login, credentials and AI consent are handled outside this conversation; never propose changes to them.
 Do not provide schedules unless scheduler_enabled is true.
@@ -253,13 +253,39 @@ export async function chat(
           resolution.ids[0]
         }]? Use Confirm below. Nothing has been changed.`;
       } else reply = resolution.clarification;
+    } else if (raw.op === "update_reminder") {
+      const reference = text(data.reminder ?? data.id, 1000);
+      const resolution = reminderSelection(reminders, reference);
+      if (resolution.ids) {
+        const target = reminders.find((reminder) =>
+          reminder.id === resolution.ids![0]
+        )!;
+        const requested: RecordData = { id: target.id };
+        for (const field of ["description", "cron", "timezone", "active"]) {
+          if (data[field] !== undefined) requested[field] = data[field];
+        }
+        proposal = validateProposal({ op: raw.op, data: requested });
+        const effective = validateProposal({
+          op: raw.op,
+          data: { ...target, ...proposal.data },
+        });
+        reply = `Update reminder "${target.description}" (${
+          effective.data.active ? "active" : "paused"
+        })? Use Confirm below. Nothing has been changed.`;
+      } else reply = resolution.clarification;
     } else {
       proposal = validateProposal({ op: raw.op, data });
     }
   }
   if (proposal) {
     if (
-      !["complete_tasks", "update_task", "delete_task", "delete_reminder"]
+      ![
+        "complete_tasks",
+        "update_task",
+        "delete_task",
+        "delete_reminder",
+        "update_reminder",
+      ]
         .includes(proposal.op)
     ) {
       reply = `Proposed ${proposal.op}${
