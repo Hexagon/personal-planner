@@ -313,7 +313,7 @@ function updateBusy(value) {
   busy = value;
   for (
     const control of document.querySelectorAll(
-      "#chat button, #chat textarea, #chat select, #chat input, #logout",
+      "#chat button, #chat textarea, #chat select, #chat input, #settings button, #settings select, #settings input, #logout",
     )
   ) {
     control.disabled = value;

@@ -102,6 +102,18 @@ Deno.test("urgency and status filters use code-calculated urgency", () => {
   rejects(() => taskList(tasks, { status: "archived" }, today));
 });
 
+Deno.test("exact-date task lists use validated saved due dates", () => {
+  const list = taskList(
+    tasks,
+    { location_name: "ICA", due_date: "2026-01-10" },
+    today,
+  );
+  assert(list.includes("Open tasks (at ICA, due 2026-01-10): 1"), list);
+  assert(list.includes("Milk") && !list.includes("Router"));
+  rejects(() => taskList(tasks, { due_date: "2026-02-30" }, today));
+  rejects(() => taskList(tasks, { due_date: "next Friday" }, today));
+});
+
 Deno.test("references resolve by exact name or ID and never guess", () => {
   const exact = resolveReferences(tasks, ["milk"]);
   assert(exact.ids?.[0] === id(1), "Exact name wins over partial matches");

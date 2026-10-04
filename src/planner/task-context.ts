@@ -46,11 +46,14 @@ export function taskList(
     ? null
     : text(query.location_name, 100);
   const dueDate = query.due_date == null ? null : text(query.due_date, 10);
+  const parsedDueDate = dueDate === null
+    ? null
+    : new Date(`${dueDate}T00:00:00.000Z`);
   if (
     dueDate !== null &&
     (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
-      new Date(`${dueDate}T00:00:00.000Z`).toISOString().slice(0, 10) !==
-        dueDate)
+      Number.isNaN(parsedDueDate?.getTime()) ||
+      parsedDueDate?.toISOString().slice(0, 10) !== dueDate)
   ) {
     throw new InputError("Invalid due date filter");
   }
