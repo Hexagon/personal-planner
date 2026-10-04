@@ -369,6 +369,7 @@ function render(messages) {
           button.textContent = cancel ? "Cancel" : "Confirm";
           button.onclick = () =>
             action(async () => {
+              sendStatus("");
               const result = await api("/api/confirm", {
                 message_id: message.id,
                 cancel,

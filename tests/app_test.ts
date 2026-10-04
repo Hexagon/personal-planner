@@ -799,6 +799,25 @@ Deno.test("confirmation applies a task mutation once and uses a transactional ta
   });
 });
 
+Deno.test("confirmation saves an update_task location change", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    await db.ensureProfile();
+    await kv.set(["planner", "tasks", owner, id(1)], task(1));
+    const [message] = await db.insert("messages", {
+      role: "assistant",
+      content: "Update task location?",
+      proposal: {
+        op: "update_task",
+        data: { id: id(1), location_name: "ICA" },
+      },
+    });
+
+    assert(await db.confirm(message.id, false));
+    assert((await db.owned("tasks", id(1))).location_name === "ICA");
+  });
+});
+
 Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", async () => {
   await withKv(async (kv) => {
     const db = new Database(kv, owner);
