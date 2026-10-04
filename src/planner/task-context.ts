@@ -6,7 +6,12 @@ import {
   text,
 } from "../validation.ts";
 import { groupByLocation, locationKey } from "./geo-planner.ts";
-import { urgencies, type Urgency, urgency } from "./task-tracker.ts";
+import {
+  prioritize,
+  urgencies,
+  type Urgency,
+  urgency,
+} from "./task-tracker.ts";
 
 const listLimit = 300;
 
@@ -75,7 +80,8 @@ export function taskList(
     (!selectedUrgencies ||
       selectedUrgencies.includes(urgency(task.due_date, today)))
   );
-  const shown = matching.slice(0, listLimit);
+  const ordered = status === "open" ? prioritize(matching, today) : matching;
+  const shown = ordered.slice(0, listLimit);
   const filters = [
     location ? `at ${location}` : null,
     dueDate ? `due ${dueDate}` : null,

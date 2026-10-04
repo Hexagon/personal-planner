@@ -87,6 +87,11 @@ Deno.test("unfiltered lists are grouped by location with unlocated tasks last", 
   assert(groups.length === 2 && groups[0].tasks.length === 2);
 });
 
+Deno.test("open task lists prioritize urgency and saved priority", () => {
+  const list = taskList([tasks[1], tasks[0]], {}, today);
+  assert(list.indexOf("Milk —") < list.indexOf("Router —"), list);
+});
+
 Deno.test("urgency and status filters use code-calculated urgency", () => {
   const urgent = taskList(
     tasks,
