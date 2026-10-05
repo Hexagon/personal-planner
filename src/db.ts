@@ -703,6 +703,8 @@ export class Database {
           }
         }
       } else if (proposal.op === "add_reminder") {
+        const revisionKey = reminderRevisionKey(this.userId);
+        const revisionEntry = await this.kv.get<number>(revisionKey);
         const savedReminders = await entries(
           this.kv,
           ["planner", "reminders", this.userId],
@@ -712,8 +714,6 @@ export class Database {
             `At most ${maxReminders} reminders are allowed; delete one first`,
           );
         }
-        const revisionKey = reminderRevisionKey(this.userId);
-        const revisionEntry = await this.kv.get<number>(revisionKey);
         checks.push({
           key: revisionKey,
           versionstamp: revisionEntry.versionstamp,
