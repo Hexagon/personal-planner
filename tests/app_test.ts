@@ -699,6 +699,55 @@ Deno.test("chat reasoning reaches the provider and failed AI calls release the r
   });
 });
 
+Deno.test("malformed provider output uses correlated provider diagnostics", async () => {
+  await withKv(async (kv) => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const failures: string[] = [];
+    globalThis.fetch = () =>
+      Promise.resolve(
+        new Response(JSON.stringify({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                reply: "Add it?",
+                proposal: { op: "add_task", data: { name: "Missing summary" } },
+              }),
+            },
+          }],
+        })),
+      );
+    console.error = (message?: unknown) => failures.push(String(message));
+    try {
+      const response = await createHandler(config, kv)(
+        request(
+          "/api/chat",
+          { content: "Add a task", ai_consent: true },
+          config.origin,
+          await sessionCookie(),
+        ),
+      );
+      assert(response.status === 502);
+      const failure = await response.json();
+      assert(
+        /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(
+          failure.request_id,
+        ),
+      );
+      const log = JSON.parse(failures.at(-1) ?? "{}");
+      assert(
+        log.category === "provider_invalid_response" &&
+          log.request_id === failure.request_id,
+      );
+      const saved = await new Database(kv, owner).list("messages");
+      assert(saved.length === 1 && saved[0].role === "user");
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
+    }
+  });
+});
+
 Deno.test("Auth.js enables only configured OAuth providers and serves CSRF tokens", async () => {
   const googleOnly = authConfig({
     ...config,

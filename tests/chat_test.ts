@@ -275,6 +275,22 @@ async function rejects(promise: Promise<unknown>, text?: string) {
   throw new Error("Expected chat to reject");
 }
 
+async function rejectsProviderOutput(promise: Promise<unknown>) {
+  try {
+    await promise;
+  } catch (error) {
+    if (
+      error instanceof ChatRequestError &&
+      error.status === 502 &&
+      error.category === "provider_invalid_response"
+    ) {
+      return;
+    }
+    throw error;
+  }
+  throw new Error("Expected invalid provider output to reject");
+}
+
 Deno.test("every open task is in context as a compact row; full descriptions and finished tasks are not", async () => {
   const tasks = Array.from(
     { length: 300 },
@@ -345,7 +361,7 @@ Deno.test("add_task proposals are validated, pending, and accept only the user's
   assert(message.action_state === "pending");
   assert(data.user_id === undefined && data.name === "Car service");
   assert(data.full_description === "Ask   about the brakes");
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks: [],
       output: {
@@ -356,9 +372,8 @@ Deno.test("add_task proposals are validated, pending, and accept only the user's
         },
       },
     }, "Add car service"),
-    "own text",
   );
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks: [],
       output: {
@@ -466,7 +481,7 @@ Deno.test("lists and completions are rendered from saved records", async () => {
     JSON.stringify((proposal.data as RecordData).ids) ===
       JSON.stringify([id(1), id(2)]),
   );
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks,
       output: {
@@ -710,17 +725,33 @@ Deno.test("saved query shapes and one-operation boundary reject malformed model 
       },
     ]
   ) {
-    await rejects(
+    await rejectsProviderOutput(
       run({ tasks: [], output: { reply: "Hi", ...output } }, "Show saved data"),
     );
   }
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks: [],
       output: { reply: "Hi", proposal_query: {} },
     }, "Show settings"),
-    "Historical proposals are not available",
   );
+});
+
+Deno.test("user input validation remains an input error before calling the provider", async () => {
+  const original = globalThis.fetch;
+  const kv = await Deno.openKv(":memory:");
+  try {
+    globalThis.fetch = () => {
+      throw new Error("Provider must not be called");
+    };
+    await rejects(
+      chat(new Database(kv, owner), config, ""),
+      "Expected non-empty text",
+    );
+  } finally {
+    globalThis.fetch = original;
+    await kv.close();
+  }
 });
 
 Deno.test("reminder targets clarify unknown/ambiguous references and reject foreign IDs", async () => {

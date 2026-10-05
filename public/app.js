@@ -162,10 +162,6 @@ async function api(path, body) {
       "Connection lost. Check your connection and refresh chat before sending again.",
     );
   }
-  if (response.status === 401) {
-    setSession(null);
-    throw new Error("Your session expired. Please sign in again.");
-  }
   let result;
   try {
     result = await response.json();
@@ -175,6 +171,10 @@ async function api(path, body) {
     );
     error.status = response.status;
     throw error;
+  }
+  if (response.status === 401) {
+    setSession(null);
+    throw new Error("Your session expired. Please sign in again.");
   }
   if (!response.ok) {
     const requestId = typeof result?.request_id === "string" &&
