@@ -6,6 +6,7 @@ import {
   type Proposal,
   type RecordData,
   text,
+  timezone,
   uuid,
   validateProposal,
 } from "./validation.ts";
@@ -223,7 +224,7 @@ function checkedProposal(value: unknown): Proposal {
     ],
     complete_tasks: ["ids"],
     delete_task: ["id"],
-    set_profile: ["timezone", "preferences"],
+    set_profile: ["preferences"],
     add_reminder: ["description", "cron", "timezone", "next_run"],
     update_reminder: ["id", "description", "cron", "timezone", "active"],
     delete_reminder: ["id"],
@@ -407,9 +408,27 @@ export class Database {
     }).set(profileKey, {
       id: this.userId,
       timezone: "UTC",
+      timezone_configured: false,
       preferences: "",
       created_at: now(),
     }).commit();
+  }
+
+  async saveTimezone(value: unknown): Promise<string> {
+    const zone = timezone(value);
+    const profileKey = ["planner", "profiles", this.userId] as const;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const entry = await this.kv.get<RecordData>(profileKey);
+      const result = await this.kv.atomic().check(entry).set(profileKey, {
+        id: this.userId,
+        timezone: zone,
+        timezone_configured: true,
+        preferences: entry.value?.preferences ?? "",
+        created_at: entry.value?.created_at ?? now(),
+      }).commit();
+      if (result.ok) return zone;
+    }
+    throw new InputError("Settings changed elsewhere. Please save again.");
   }
 
   async owned(table: "tasks" | "reminders", id: unknown): Promise<RecordData> {
@@ -635,7 +654,10 @@ export class Database {
           key: profileKey,
           value: {
             id: this.userId,
-            timezone: data.timezone ?? profileEntry.value?.timezone ?? "UTC",
+            timezone: profileEntry.value?.timezone ?? "UTC",
+            timezone_configured: profileEntry.value
+              ? profileEntry.value.timezone_configured !== false
+              : false,
             preferences: data.preferences ??
               profileEntry.value?.preferences ?? "",
             created_at: profileEntry.value?.created_at ?? timestamp,

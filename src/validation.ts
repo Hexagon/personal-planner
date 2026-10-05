@@ -41,6 +41,9 @@ function optionalText(value: unknown, max: number): string | null {
 }
 export function timezone(value: unknown): string {
   const zone = text(value, 100);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*(?:\/[A-Za-z0-9_+-]+)*$/.test(zone)) {
+    throw new InputError("Invalid IANA timezone");
+  }
   try {
     new Intl.DateTimeFormat("en", { timeZone: zone });
   } catch {
@@ -143,7 +146,7 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
     case "set_profile": {
       clean = {};
       if (data.timezone !== undefined) {
-        clean.timezone = timezone(data.timezone);
+        throw new InputError("Change your timezone in Settings");
       }
       if (data.preferences !== undefined) {
         clean.preferences = data.preferences == null || data.preferences === ""

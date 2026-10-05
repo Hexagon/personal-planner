@@ -63,6 +63,168 @@ async function withKv(test: (kv: Deno.Kv) => Promise<void>) {
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
+Deno.test("timezone Settings are authenticated, owner scoped and saved without AI consent", async () => {
+  await withKv(async (kv) => {
+    const handler = createHandler(config, kv);
+    const cookie = await sessionCookie();
+    assert((await handler(request("/api/settings"))).status === 401);
+    assert(
+      (await handler(request("/api/settings", { timezone: "UTC" }))).status ===
+        401,
+    );
+    const get = () =>
+      handler(request("/api/settings", undefined, config.origin, cookie));
+    assert((await (await get()).json()).timezone === null);
+    await new Database(kv, owner).ensureProfile();
+    assert((await (await get()).json()).timezone === null);
+    const save = () =>
+      handler(
+        request(
+          "/api/settings",
+          { timezone: "Europe/Stockholm" },
+          config.origin,
+          cookie,
+        ),
+      );
+    assert((await save()).status === 200);
+    assert((await save()).status === 200);
+    assert((await (await get()).json()).timezone === "Europe/Stockholm");
+    assert((await kv.get(["planner", "profiles", otherOwner])).value === null);
+    const other = await handler(
+      request(
+        "/api/settings",
+        undefined,
+        config.origin,
+        await sessionCookie(otherOwner),
+      ),
+    );
+    assert((await other.json()).timezone === null);
+    assert((await new Database(kv, owner).list("messages")).length === 0);
+    const profile = (await new Database(kv, owner).list("profiles"))[0];
+    assert(profile.id === owner && profile.timezone_configured === true);
+  });
+});
+
+Deno.test("timezone Settings reject cross-origin requests, invalid zones and unknown fields", async () => {
+  await withKv(async (kv) => {
+    const handler = createHandler(config, kv);
+    const cookie = await sessionCookie();
+    const body = { timezone: "Europe/Stockholm" };
+    assert(
+      (await handler(
+        request("/api/settings", body, "https://other.example", cookie),
+      )).status === 403,
+    );
+    for (
+      const timezone of [
+        null,
+        12,
+        "",
+        "+02:00",
+        "UTC+2",
+        "Not/AZone",
+        "<script>",
+        "x".repeat(101),
+      ]
+    ) {
+      assert(
+        (await handler(
+          request("/api/settings", { timezone }, config.origin, cookie),
+        )).status === 400,
+      );
+    }
+    for (
+      const invalid of [{}, { ...body, user_id: otherOwner }, {
+        ...body,
+        preferences: "Injected",
+      }]
+    ) {
+      assert(
+        (await handler(
+          request("/api/settings", invalid, config.origin, cookie),
+        )).status === 400,
+      );
+    }
+    assert(
+      (await handler(
+        request("/api/settings?owner=other", body, config.origin, cookie),
+      )).status === 400,
+    );
+    assert(
+      (await handler(
+        request("/api/settings?owner=other", undefined, config.origin, cookie),
+      )).status === 400,
+    );
+    assert((await kv.get(["planner", "profiles", owner])).value === null);
+  });
+});
+
+Deno.test("timezone Settings preserve existing profiles and reminder schedules", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    const key = ["planner", "profiles", owner];
+    const profile = {
+      id: owner,
+      timezone: "UTC",
+      preferences: "Brief replies",
+      created_at: "2020-01-01T00:00:00.000Z",
+    };
+    await kv.set(key, profile);
+    const handler = createHandler(config, kv);
+    const cookie = await sessionCookie();
+    assert(
+      (await (await handler(
+        request("/api/settings", undefined, config.origin, cookie),
+      )).json()).timezone === "UTC",
+    );
+    const reminderKey = ["planner", "reminders", owner, id(200)];
+    const reminder = {
+      id: id(200),
+      timezone: "UTC",
+      cron: "0 18 * * 0",
+      next_run: "2026-10-11T18:00:00.000Z",
+    };
+    await kv.set(reminderKey, reminder);
+    await Promise.all([
+      db.saveTimezone("Europe/Stockholm"),
+      db.saveTimezone("America/New_York"),
+    ]);
+    const saved = (await kv.get<RecordData>(key)).value!;
+    assert(
+      saved.preferences === profile.preferences &&
+        saved.created_at === profile.created_at,
+    );
+    assert(
+      saved.timezone === "Europe/Stockholm" ||
+        saved.timezone === "America/New_York",
+    );
+    assert(
+      JSON.stringify((await kv.get(reminderKey)).value) ===
+        JSON.stringify(reminder),
+    );
+  });
+});
+
+Deno.test("historical chat timezone proposals can no longer change profile timezone", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    await db.saveTimezone("Europe/Stockholm");
+    const message = (await db.insert("messages", {
+      role: "assistant",
+      content: "Old timezone proposal",
+      proposal: { op: "set_profile", data: { timezone: "UTC" } },
+    }))[0];
+    let rejected = false;
+    try {
+      await db.confirm(message.id, false);
+    } catch (error) {
+      rejected = error instanceof InputError;
+    }
+    assert(rejected);
+    assert((await db.list("profiles"))[0].timezone === "Europe/Stockholm");
+  });
+});
+
 Deno.test("preview badge is limited to non-production Deno Deploy", () => {
   assert(!isPreviewDeployment(false, undefined));
   assert(!isPreviewDeployment(true, "production"));
@@ -1073,21 +1235,21 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
     await db.ensureProfile();
     const profile = await db.insert("messages", {
       role: "assistant",
-      content: "Set timezone?",
+      content: "Set preferences?",
       proposal: {
         op: "set_profile",
         data: {
-          timezone: "Europe/Stockholm",
           preferences: "Plan around school pickup",
         },
       },
     });
+    await db.saveTimezone("Europe/Stockholm");
     assert(await db.confirm(profile[0].id, false));
     const savedProfile = (await db.list("profiles"))[0];
     assert(
       savedProfile.timezone === "Europe/Stockholm" &&
         savedProfile.preferences === "Plan around school pickup",
-      "Confirmation must save each proposed profile field",
+      "Preference confirmation must preserve the timezone saved from Settings",
     );
 
     const taskIds = Array.from({ length: 20 }, (_, index) => id(index + 100));

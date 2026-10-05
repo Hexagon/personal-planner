@@ -136,14 +136,22 @@ export function createHandler(
         });
       }
       if (
-        !["/api/messages", "/api/upcoming", "/api/chat", "/api/confirm"]
+        ![
+          "/api/messages",
+          "/api/upcoming",
+          "/api/chat",
+          "/api/confirm",
+          "/api/settings",
+        ]
           .includes(path)
       ) {
         return json({ error: "Not found" }, 404);
       }
       if (
-        request.method !==
-          (["/api/messages", "/api/upcoming"].includes(path) ? "GET" : "POST")
+        path === "/api/settings"
+          ? !["GET", "POST"].includes(request.method)
+          : request.method !==
+            (["/api/messages", "/api/upcoming"].includes(path) ? "GET" : "POST")
       ) {
         return json({ error: "Method not allowed" }, 405);
       }
@@ -153,6 +161,17 @@ export function createHandler(
       ) return json({ error: "Origin not allowed" }, 403);
       const userId = await authenticate(request, config);
       const db = new Database(kv, userId);
+      if (path === "/api/settings" && request.method === "GET") {
+        if (url.searchParams.size) {
+          throw new InputError("Settings does not accept query parameters");
+        }
+        const profile = (await db.list("profiles"))[0];
+        return json({
+          timezone: profile && profile.timezone_configured !== false
+            ? profile.timezone
+            : null,
+        });
+      }
       if (path === "/api/upcoming") {
         if (new URL(request.url).searchParams.size) {
           throw new InputError("Upcoming does not accept query parameters");
@@ -212,6 +231,13 @@ export function createHandler(
         body = object(JSON.parse(new TextDecoder().decode(bytes)));
       } catch {
         throw new InputError("Invalid JSON object");
+      }
+      if (path === "/api/settings") {
+        if (
+          url.searchParams.size || Object.keys(body).length !== 1 ||
+          !Object.hasOwn(body, "timezone")
+        ) throw new InputError("Settings accepts only timezone");
+        return json({ timezone: await db.saveTimezone(body.timezone) });
       }
       if (active.has(db.userId)) {
         return json({ error: "Please wait for your previous request" }, 429);

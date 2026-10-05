@@ -14,28 +14,15 @@ export function validTimezone(value) {
   }
 }
 
-// Saved timezone hints are page-only and isolated by verified account.
 export function createOnboarding() {
-  const accounts = new Map();
   let owner = null;
-  const current = () => accounts.get(owner);
   return {
     setOwner(id) {
       owner = typeof id === "string" && id.length ? id : null;
-      if (owner && !accounts.has(owner)) {
-        accounts.set(owner, { timezone: null });
-      }
-    },
-    setTimezone(value) {
-      const timezone = validTimezone(value);
-      if (owner && timezone) current().timezone = timezone;
-      return timezone;
     },
     snapshot(consent, keyAvailable) {
-      const state = current();
       const canChat = !!owner && consent === true && keyAvailable === true;
       return {
-        timezone: state?.timezone ?? null,
         canChat,
         canBrowse: !!owner,
         expanded: !!owner && !canChat,

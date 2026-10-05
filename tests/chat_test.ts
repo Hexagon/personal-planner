@@ -493,6 +493,23 @@ Deno.test("lists and completions are rendered from saved records", async () => {
   );
 });
 
+Deno.test("chat cannot propose profile timezone changes even alongside preferences", async () => {
+  for (
+    const data of [
+      { timezone: "UTC" },
+      { timezone: "Europe/Stockholm", preferences: "Brief replies" },
+    ]
+  ) {
+    await rejectsProviderOutput(run({
+      tasks: [],
+      output: {
+        reply: "Change timezone?",
+        proposal: { op: "set_profile", data },
+      },
+    }, "Set my timezone to UTC"));
+  }
+});
+
 Deno.test("saved settings and reminders are authoritative and owner scoped", async () => {
   const setup = async (kv: Deno.Kv, db: Database) => {
     await kv.set(["planner", "profiles", owner], {
@@ -550,6 +567,7 @@ Deno.test("saved settings and reminders are authoritative and owner scoped", asy
     },
   }, "What are my saved preferences?");
   assert(String(settings.message.content).includes("p".repeat(4000)));
+  assert(!String(settings.message.content).includes("Timezone:"));
   assert(!settings.modelRequest.includes("OTHER-OWNER-REMINDER"));
   const reminders = await run({
     tasks: [],
@@ -720,7 +738,7 @@ Deno.test("saved query shapes and one-operation boundary reject malformed model 
       { task_query: { urgency: "soon" } },
       { task_query: { urgency: false } },
       {
-        proposal: { op: "set_profile", data: { timezone: "UTC" } },
+        proposal: { op: "set_profile", data: { preferences: "Brief replies" } },
         reminder_query: {},
       },
     ]

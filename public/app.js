@@ -44,11 +44,32 @@ try {
 const upcoming = createUpcoming({
   api,
   getOwner: () => session?.user.id,
-  onData: (data) => {
-    onboarding.setTimezone(data.timezone);
-    updateOnboarding();
-  },
 });
+let timezoneReady = false;
+let timezoneRevision = 0;
+async function loadTimezone() {
+  const owner = session?.user.id;
+  const revision = ++timezoneRevision;
+  timezoneReady = false;
+  try {
+    const saved = await api("/api/settings");
+    if (owner !== session?.user.id || revision !== timezoneRevision) return;
+    const zone = saved.timezone === null
+      ? detectedTimezone ?? "UTC"
+      : validTimezone(saved.timezone);
+    if (!zone) throw new Error("Could not load your saved timezone.");
+    element("timezone").value = zone;
+    if (saved.timezone === null) element("settings").open = true;
+    timezoneReady = true;
+    element("timezone-status").textContent = saved.timezone === null
+      ? "Detected from your browser. Review it and Save to use it for dates."
+      : "Your saved timezone. Changes apply when you Save.";
+  } catch {
+    if (owner !== session?.user.id || revision !== timezoneRevision) return;
+    element("timezone-status").textContent =
+      "Could not load your timezone. Use Refresh chat to try again before saving.";
+  }
+}
 let busy = false;
 const settings = createSettings({
   models: config.models.map((model) => model.id),
@@ -124,23 +145,11 @@ function updateOnboarding() {
   const keyAvailable = !!openrouterKey || !!config.serverKeyAvailable;
   const state = onboarding.snapshot(consent, keyAvailable);
   element("setup-status").textContent = state.canChat
-    ? "Ready to chat. Every change still needs your confirmation."
+    ? "Ready to chat. Task and reminder changes still need your confirmation."
     : "Accept the AI data notice and add a key if needed, then Save to begin. You can close Settings and browse without chatting.";
   element("consent-status").textContent = consent
     ? "Accepted on this browser. Uncheck and Save to revoke."
     : "Not accepted. No new chat is sent until you opt in and Save.";
-  element("timezone-status").textContent = state.timezone
-    ? `Saved timezone: ${state.timezone}.${
-      detectedTimezone && state.timezone !== detectedTimezone
-        ? ` Browser suggestion: ${detectedTimezone}.`
-        : ""
-    }`
-    : "Saved timezone not yet available. Use Refresh chat to check.";
-  element("use-timezone").hidden = !detectedTimezone ||
-    detectedTimezone === state.timezone;
-  element("use-timezone").textContent = `Draft a change to ${
-    detectedTimezone ?? "your timezone"
-  }`;
 }
 function reviewSetup() {
   element("settings").open = !!session;
@@ -155,12 +164,6 @@ function openKeySetup() {
 element("close-settings").onclick = () => {
   element("settings").open = false;
   element("settings").querySelector("summary").focus();
-};
-element("use-timezone").onclick = () => {
-  if (!detectedTimezone) return;
-  element("prompt").value = `Set my timezone to ${detectedTimezone}.`;
-  element("settings").open = false;
-  element("prompt").focus();
 };
 
 function setSession(value) {
@@ -180,6 +183,10 @@ function setSession(value) {
   element("settings").hidden = !session;
   element("logout").hidden = !session;
   if (previousOwner !== session?.user.id) {
+    timezoneRevision++;
+    timezoneReady = false;
+    element("timezone").value = "";
+    if (session) void loadTimezone();
     element("settings").open = !!session &&
       onboarding.snapshot(
         saved.consent,
@@ -266,7 +273,7 @@ const actionNames = {
   update_task: "Update task",
   complete_tasks: "Mark tasks done",
   delete_task: "Delete task",
-  set_profile: "Update settings",
+  set_profile: "Update preferences",
   add_reminder: "Add reminder",
   update_reminder: "Update reminder",
   delete_reminder: "Delete reminder",
@@ -533,6 +540,7 @@ function expirePendingProposalCards() {
   }
 }
 async function refresh() {
+  if (!timezoneReady) await loadTimezone();
   const upcomingRefresh = upcoming.refresh();
   const page = await api("/api/messages?history=true");
   pendingUser?.remove();
@@ -653,6 +661,17 @@ element("save-settings").onclick = () =>
         }),
       setSession,
     );
+    if (!timezoneReady) {
+      throw new Error("Refresh chat to load your timezone before saving.");
+    }
+    const zone = validTimezone(element("timezone").value);
+    if (!zone) {
+      throw new Error("Enter a valid IANA timezone, such as Europe/Stockholm.");
+    }
+    if (element("openrouter-key").value.length > 512) {
+      throw new Error("API keys must be 512 characters or fewer.");
+    }
+    await api("/api/settings", { timezone: zone });
     const result = settings.save({
       consent: element("consent").checked,
       model: element("model").value,
@@ -671,6 +690,9 @@ element("save-settings").onclick = () =>
     element("openrouter-key").value = "";
     updateKeyStatus();
     updateOnboarding();
+    element("timezone").value = zone;
+    element("timezone-status").textContent = "Timezone saved.";
+    await upcoming.refresh();
     const ready = onboarding.snapshot(
       settings.snapshot().consent,
       !!openrouterKey || !!config.serverKeyAvailable,

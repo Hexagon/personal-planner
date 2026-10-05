@@ -1,4 +1,3 @@
-import { createOnboarding } from "../public/settings.js";
 import { createUpcoming } from "../public/upcoming.js";
 
 function assert(value: unknown, message = "Assertion failed"): asserts value {
@@ -48,8 +47,6 @@ function fixture() {
   let owner = "account-a";
   const pending: Array<(data: Data) => void> = [];
   const accepted: string[] = [];
-  const onboarding = createOnboarding();
-  onboarding.setOwner(owner);
   const upcoming = createUpcoming({
     api: (path: string) => {
       assert(path === "/api/upcoming");
@@ -58,63 +55,57 @@ function fixture() {
     getOwner: () => owner,
     onData: (data: Data) => {
       accepted.push(data.timezone);
-      onboarding.setTimezone(data.timezone);
     },
   });
   return {
     upcoming,
     pending,
     accepted,
-    onboarding,
     switchOwner(next: string) {
       owner = next;
-      onboarding.setOwner(owner);
     },
   };
 }
 
 Deno.test("superseded upcoming responses cannot overwrite the accepted saved timezone", async () => {
   await withDocument(async () => {
-    const { upcoming, pending, accepted, onboarding } = fixture();
+    const { upcoming, pending, accepted } = fixture();
     const older = upcoming.refresh();
     const newer = upcoming.refresh();
     pending[1]({ timezone: "Europe/Stockholm", items: [] });
     await newer;
-    assert(onboarding.snapshot(true, true).timezone === "Europe/Stockholm");
+    assert(accepted.at(-1) === "Europe/Stockholm");
     pending[0]({ timezone: "UTC", items: [] });
     await older;
     assert(accepted.length === 1 && accepted[0] === "Europe/Stockholm");
-    assert(onboarding.snapshot(true, true).timezone === "Europe/Stockholm");
+    assert(accepted.at(-1) === "Europe/Stockholm");
   });
 });
 
-Deno.test("account switches reject delayed upcoming data before the onboarding callback", async () => {
+Deno.test("account switches reject delayed upcoming data before the data callback", async () => {
   await withDocument(async () => {
-    const { upcoming, pending, accepted, onboarding, switchOwner } = fixture();
+    const { upcoming, pending, accepted, switchOwner } = fixture();
     const outgoing = upcoming.refresh();
     switchOwner("account-b");
     pending[0]({ timezone: "UTC", items: [] });
     await outgoing;
     assert(accepted.length === 0);
-    assert(onboarding.snapshot(true, true).timezone === null);
     const incoming = upcoming.refresh();
     pending[1]({ timezone: "America/New_York", items: [] });
     await incoming;
     assert(accepted.join(",") === "America/New_York");
-    assert(onboarding.snapshot(true, true).timezone === "America/New_York");
+    assert(accepted.at(-1) === "America/New_York");
     switchOwner("account-a");
-    assert(onboarding.snapshot(true, true).timezone === null);
   });
 });
 
 Deno.test("reset invalidates pending upcoming data even when the owner stays the same", async () => {
   await withDocument(async () => {
-    const { upcoming, pending, accepted, onboarding } = fixture();
+    const { upcoming, pending, accepted } = fixture();
     const stale = upcoming.refresh();
     upcoming.reset();
     pending[0]({ timezone: "UTC", items: [] });
     await stale;
     assert(accepted.length === 0);
-    assert(onboarding.snapshot(true, true).timezone === null);
   });
 });

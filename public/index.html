@@ -102,14 +102,16 @@
                 account for the key you use. Avoid sharing it in chat.</p>
               </fieldset>
               <div id="timezone-step" class="setup-step">
-                <strong>Timezone (optional)</strong>
+                <label for="timezone">Timezone</label>
+                <input id="timezone" type="text" maxlength="100"
+                  autocomplete="off" spellcheck="false"
+                  placeholder="Europe/Stockholm">
                 <p id="timezone-status"
                   class="hint">Checking your saved timezone…</p>
-                <button id="use-timezone" class="secondary" type="button"
-                  hidden>Draft a timezone change</button>
                 <p
-                  class="hint">New accounts default to UTC. A suggested timezone only fills
-                  your chat draft; send it and confirm the proposal to save a change.</p>
+                  class="hint">Your browser timezone is detected for initial setup.
+                  Enter an IANA timezone and Save to change how task dates are grouped.
+                  Existing reminder schedules keep their own timezones.</p>
               </div>
               <button id="save-settings" type="button">Save</button>
               <button id="close-settings" class="secondary"

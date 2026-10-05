@@ -12,9 +12,7 @@ export function queryObject(input: unknown, fields: string[]): RecordData {
 // Only safe, explicit fields enter context; never spread proposal payloads.
 export function settingsReply(profile: RecordData, input: unknown): string {
   queryObject(input, []);
-  return `Saved settings:\nTimezone: ${profile.timezone}\nPreferences: ${
-    profile.preferences || "(none)"
-  }`;
+  return `Saved preferences:\nPreferences: ${profile.preferences || "(none)"}`;
 }
 
 export function reminderSelection(reminders: RecordData[], reference: unknown) {
