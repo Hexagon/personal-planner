@@ -55,6 +55,7 @@ const settings = createSettings({
   defaultModel: config.model,
 });
 let openrouterKey = "";
+let removeKey = false;
 const renderedMessages = new Map();
 let pendingUser = null;
 let historyCursor = null;
@@ -104,7 +105,9 @@ function scrollToLatest() {
 
 function updateKeyStatus() {
   const mode = settings.snapshot().keyMode;
-  element("key-status").textContent = openrouterKey
+  element("key-status").textContent = removeKey
+    ? "Your key will be removed when you Save."
+    : openrouterKey
     ? mode === "device"
       ? "Using your remembered key on this device."
       : mode === "tab"
@@ -113,37 +116,19 @@ function updateKeyStatus() {
     : config.serverKeyAvailable
     ? "Using the app-provided key. You can use your own instead."
     : "Add your OpenRouter key to start chatting.";
-  element("key-setup").hidden = !!openrouterKey;
-  element("change-key").hidden = !openrouterKey;
-  element("clear-key").hidden = !openrouterKey;
-  element("cancel-key").hidden = !openrouterKey;
+  element("clear-key").hidden = !openrouterKey || removeKey;
 }
 
 function updateOnboarding() {
-  const consent = element("consent").checked;
+  const consent = settings.snapshot().consent;
   const keyAvailable = !!openrouterKey || !!config.serverKeyAvailable;
   const state = onboarding.snapshot(consent, keyAvailable);
-  const steps = element("onboarding-steps");
-  if (!state.expanded && steps.contains(document.activeElement)) {
-    element("review-setup").focus();
-  }
-  steps.hidden = !state.expanded;
-  element("review-setup").setAttribute("aria-expanded", String(state.expanded));
   element("setup-status").textContent = state.canChat
     ? "Ready to chat. Every change still needs your confirmation."
-    : state.deferred
-    ? "Setup deferred. Your conversation history and upcoming items are still available."
-    : "Review AI consent and chat access to begin. Browsing history and upcoming items needs no AI consent.";
+    : "Accept the AI data notice and add a key if needed, then Save to begin. You can close Settings and browse without chatting.";
   element("consent-status").textContent = consent
-    ? "Accepted on this browser. Uncheck below to revoke."
-    : "Not accepted. No new chat is sent until you opt in.";
-  element("access-status").textContent = openrouterKey
-    ? element("key-status").textContent
-    : config.serverKeyAvailable
-    ? "Ready — the app provides a key. You do not need to add one."
-    : "A personal OpenRouter key is required to chat. Add it in Settings.";
-  element("setup-key").hidden = keyAvailable;
-  element("timezone-step").hidden = state.timezoneSkipped;
+    ? "Accepted on this browser. Uncheck and Save to revoke."
+    : "Not accepted. No new chat is sent until you opt in and Save.";
   element("timezone-status").textContent = state.timezone
     ? `Saved timezone: ${state.timezone}.${
       detectedTimezone && state.timezone !== detectedTimezone
@@ -158,33 +143,23 @@ function updateOnboarding() {
   }`;
 }
 function reviewSetup() {
-  onboarding.review();
-  element("settings").open = false;
+  element("settings").open = !!session;
   updateOnboarding();
-  element("review-setup").focus();
-  element("onboarding").scrollIntoView({ block: "start" });
+  if (session) element("consent").focus();
 }
 function openKeySetup() {
   element("settings").open = true;
   element("key-setup").hidden = false;
   element("openrouter-key").focus();
 }
-element("review-setup").onclick = reviewSetup;
-element("review-privacy").onclick = reviewSetup;
-element("setup-key").onclick = openKeySetup;
-element("setup-later").onclick = () => {
-  onboarding.defer();
-  updateOnboarding();
-  element("review-setup").focus();
-};
-element("skip-timezone").onclick = () => {
-  onboarding.skipTimezone();
-  updateOnboarding();
-  element("review-setup").focus();
+element("close-settings").onclick = () => {
+  element("settings").open = false;
+  element("settings").querySelector("summary").focus();
 };
 element("use-timezone").onclick = () => {
   if (!detectedTimezone) return;
   element("prompt").value = `Set my timezone to ${detectedTimezone}.`;
+  element("settings").open = false;
   element("prompt").focus();
 };
 
@@ -205,10 +180,16 @@ function setSession(value) {
   element("settings").hidden = !session;
   element("logout").hidden = !session;
   if (previousOwner !== session?.user.id) {
-    element("settings").open = false;
+    element("settings").open = !!session &&
+      onboarding.snapshot(
+        saved.consent,
+        !!saved.key || !!config.serverKeyAvailable,
+      )
+        .expanded;
     element("saved-next").hidden = true;
     upcoming.reset();
     element("openrouter-key").value = "";
+    removeKey = false;
     updateKeyStatus();
     element("messages").replaceChildren();
     renderedMessages.clear();
@@ -565,7 +546,6 @@ async function refresh() {
       api(`/api/messages?history=true&cursor=${encodeURIComponent(cursor)}`),
   );
   render(history.messages);
-  onboarding.setEstablished(history.messages.length > 0);
   updateOnboarding();
   for (const message of history.messages) historyCoverage.add(message.id);
   historyCursor = history.cursor;
@@ -662,55 +642,61 @@ for (const provider of config.providers) {
   };
   element("auth-providers").append(button);
 }
-element("save-key").onclick = () => {
-  const key = element("openrouter-key").value.trim();
-  if (!key) {
-    notice("Enter your OpenRouter API key first.", "error");
-    return;
-  }
-  if (key.length > 512) {
-    notice("OpenRouter API keys must be 512 characters or fewer.", "error");
-    return;
-  }
-  const result = settings.saveKey(key, element("remember-key").checked);
-  openrouterKey = settings.snapshot().key;
-  element("openrouter-key").value = "";
-  updateKeyStatus();
-  updateOnboarding();
-  notice(
-    !result.cleared
-      ? "Using your key, but old browser credentials could not be removed. Clear this site's browser data before sharing this device."
-      : !result.stored
-      ? "Using your key in memory only. Browser storage is unavailable; it was not saved."
-      : element("remember-key").checked
-      ? "Your key is remembered for this account on this device."
-      : "Your key will be used for chat in this tab only.",
-    !result.cleared || !result.stored ? "error" : "info",
-  );
-};
-element("change-key").onclick = () => {
-  element("key-setup").hidden = false;
-  element("openrouter-key").focus();
-};
-element("cancel-key").onclick = () => {
-  element("openrouter-key").value = "";
-  updateKeyStatus();
-};
+element("save-settings").onclick = () =>
+  action(async () => {
+    await verifyChatSession(
+      session?.user.id,
+      () =>
+        fetch("/auth/session", {
+          credentials: "same-origin",
+          cache: "no-store",
+        }),
+      setSession,
+    );
+    const result = settings.save({
+      consent: element("consent").checked,
+      model: element("model").value,
+      reasoning: element("reasoning").value,
+      key: element("openrouter-key").value,
+      remember: element("remember-key").checked,
+      removeKey,
+    });
+    if (!result.valid) {
+      throw new Error(
+        "Check your settings. API keys must be 512 characters or fewer.",
+      );
+    }
+    openrouterKey = settings.snapshot().key;
+    removeKey = false;
+    element("openrouter-key").value = "";
+    updateKeyStatus();
+    updateOnboarding();
+    const ready = onboarding.snapshot(
+      settings.snapshot().consent,
+      !!openrouterKey || !!config.serverKeyAvailable,
+    ).canChat;
+    element("settings").open = !ready;
+    if (ready) {
+      element("settings").querySelector("summary").focus();
+    }
+    notice(
+      !result.cleared
+        ? "Settings applied, but old browser credentials could not be removed. Clear this site's browser data before sharing this device."
+        : !result.stored
+        ? "Settings applied for this page only. Browser storage is unavailable; some settings could not be saved."
+        : ready
+        ? "Settings saved. Ready to chat."
+        : "Settings saved. Accept the AI data notice and add a key if needed to chat.",
+      !result.cleared || !result.stored ? "error" : "info",
+    );
+  }, "Saving settings…");
 element("clear-key").onclick = () => {
-  const cleared = settings.clearKey();
-  openrouterKey = "";
+  removeKey = true;
   element("openrouter-key").value = "";
   element("remember-key").checked = false;
   updateKeyStatus();
-  updateOnboarding();
-  notice(
-    !cleared
-      ? "Key removed from this page, but browser storage could not be cleared. Clear this site's browser data before sharing this device."
-      : config.serverKeyAvailable
-      ? "Your key was cleared. The app-provided key will be used."
-      : "Your key was cleared. Add a key to continue chatting.",
-    cleared ? "info" : "error",
-  );
+  element("key-status").textContent = "Your key will be removed when you Save.";
+  notice("Click Save to remove your key, or enter a replacement.");
 };
 element("logout").onclick = () =>
   action(async () => {
@@ -754,13 +740,15 @@ element("chat-form").onsubmit = (event) => {
         reviewSetup();
       },
     );
-    element("consent").checked = settings.syncConsent();
+    settings.syncConsent();
     updateOnboarding();
     const content = element("prompt").value.trim();
     if (!content) throw new Error("Write a message first.");
-    if (!element("consent").checked) {
+    if (!settings.snapshot().consent || !element("consent").checked) {
       reviewSetup();
-      throw new Error("Please review and accept the AI data notice first.");
+      throw new Error(
+        "Please accept the AI data notice in Settings and Save first.",
+      );
     }
     if (!openrouterKey && !config.serverKeyAvailable) {
       reviewSetup();
@@ -772,7 +760,6 @@ element("chat-form").onsubmit = (event) => {
     pendingUser?.remove();
     pendingUser = temporaryMessage("user", content);
     const thinking = temporaryMessage("assistant", "Thinking", "thinking");
-    setComposerExpanded(true);
     sendStatus("Sending your message. Dayfold is thinking…");
     element("send").setAttribute("aria-label", "Sending message");
     element("send").title = "Sending message";
@@ -783,8 +770,8 @@ element("chat-form").onsubmit = (event) => {
       const started = performance.now();
       const message = await api("/api/chat", {
         content,
-        model: element("model").value,
-        reasoning: element("reasoning").value,
+        model: settings.snapshot().model,
+        reasoning: settings.snapshot().reasoning,
         ai_consent: true,
         online_search: element("online-search").checked,
         ...(openrouterKey ? { openrouter_key: openrouterKey } : {}),
@@ -859,42 +846,17 @@ for (const button of document.querySelectorAll("[data-prompt]")) {
     element("prompt").focus();
   };
 }
-element("consent").onchange = () => {
-  const stored = settings.setConsent(element("consent").checked);
-  updateOnboarding();
-  if (!stored) {
-    notice(
-      "Consent changed for this page only. Browser storage is unavailable; clear this site's browser data if revoking saved consent.",
-      "error",
-    );
-  }
-};
 globalThis.addEventListener("storage", (event) => {
   if (!settings.handleStorageChange(event.key)) return;
   element("consent").checked = settings.snapshot().consent;
   if (!element("consent").checked) {
-    onboarding.review();
+    reviewSetup();
     notice(
       "AI consent was revoked in another tab. Review the AI data notice before chatting.",
     );
   }
   updateOnboarding();
 });
-for (const id of ["model", "reasoning"]) {
-  element(id).onchange = () => {
-    if (
-      !settings.setPreferences(
-        element("model").value,
-        element("reasoning").value,
-      )
-    ) {
-      notice(
-        "Preferences changed for this page only; they could not be saved.",
-        "error",
-      );
-    }
-  };
-}
 const authError = new URLSearchParams(location.search).get("error");
 if (authError === "OAuthAccountNotLinked") {
   notice(

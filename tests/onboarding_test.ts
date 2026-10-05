@@ -31,79 +31,66 @@ Deno.test("onboarding validates IANA timezone suggestions without accepting offs
   }
 });
 
-Deno.test("deferred onboarding allows read-only access but never grants consent or key access", () => {
+Deno.test("settings automatically open when either consent or chat access is missing", () => {
   const setup = createOnboarding();
   assert(!setup.snapshot(true, true).canChat);
   assert(!setup.snapshot(true, true).canBrowse);
   setup.setOwner("account-a");
   assert(setup.snapshot(false, false).expanded);
-  setup.defer();
-  const deferred = setup.snapshot(false, false);
-  assert(deferred.deferred && !deferred.expanded);
-  assert(deferred.canBrowse && !deferred.canChat);
+  assert(setup.snapshot(false, false).canBrowse);
+  assert(!setup.snapshot(false, false).canChat);
   assert(!setup.snapshot(true, false).canChat);
   assert(!setup.snapshot(false, true).canChat);
   assert(setup.snapshot(true, true).canChat);
-  setup.review();
+  assert(!setup.snapshot(true, true).expanded);
   assert(setup.snapshot(false, false).expanded);
-  assert(!setup.snapshot(false, false).deferred);
+  assert(setup.snapshot(true, false).expanded);
+  assert(setup.snapshot(false, true).expanded);
 });
 
-Deno.test("timezone skip and deferral are quiet page-only choices scoped to the verified account", () => {
+Deno.test("timezone hints are page-only and scoped to the verified account", () => {
   const setup = createOnboarding();
   setup.setOwner("account-a");
-  setup.skipTimezone();
-  setup.defer();
   setup.setTimezone("Europe/Stockholm");
   setup.setOwner("account-b");
   const other = setup.snapshot(false, false);
-  assert(!other.deferred && !other.timezoneSkipped && !other.timezone);
+  assert(!other.timezone);
   assert(other.expanded && !other.canChat);
   setup.setOwner(null);
   assert(!setup.snapshot(true, true).canChat);
   assert(!setup.snapshot(true, true).expanded);
   setup.setOwner("account-a");
   const restored = setup.snapshot(true, true);
-  assert(restored.deferred && restored.timezoneSkipped);
   assert(restored.timezone === "Europe/Stockholm");
-  assert(!createOnboarding().snapshot(true, true).deferred);
+  assert(!restored.expanded);
 });
 
 Deno.test("saved timezone is authoritative; invalid data cannot replace it", () => {
   const setup = createOnboarding();
   setup.setOwner("account");
   setup.setTimezone("UTC");
-  assert(setup.snapshot(true, true).expanded);
+  assert(!setup.snapshot(true, true).expanded);
   assert(setup.setTimezone("America/New_York") === "America/New_York");
   assert(setup.snapshot(true, true).timezone === "America/New_York");
   assert(!setup.snapshot(true, true).expanded);
   assert(setup.setTimezone("Invalid/Timezone") === null);
   assert(setup.snapshot(true, true).timezone === "America/New_York");
-  setup.review();
-  assert(setup.snapshot(true, true).expanded);
-  setup.skipTimezone();
-  assert(setup.snapshot(true, true).timezoneSkipped);
   assert(setup.snapshot(false, true).expanded);
 });
 
-Deno.test("established UTC accounts stay quiet unless consent/key is missing or setup is explicitly reviewed", () => {
+Deno.test("optional timezone never triggers onboarding for a ready account", () => {
   const setup = createOnboarding();
   setup.setOwner("established-account");
+  assert(!setup.snapshot(true, true).expanded);
   setup.setTimezone("UTC");
-  assert(setup.snapshot(true, true).expanded);
-  setup.setEstablished(true);
   assert(!setup.snapshot(true, true).expanded);
   assert(setup.snapshot(true, true).timezone === "UTC");
   assert(setup.snapshot(false, true).expanded);
   assert(setup.snapshot(true, false).expanded);
-  setup.setEstablished(false);
   assert(!setup.snapshot(true, true).expanded);
-  setup.review();
-  assert(setup.snapshot(true, true).expanded);
   setup.setOwner("new-account");
   setup.setTimezone("UTC");
-  assert(setup.snapshot(true, true).expanded);
+  assert(!setup.snapshot(true, true).expanded);
   setup.setOwner("established-account");
-  setup.defer();
   assert(!setup.snapshot(true, true).expanded);
 });

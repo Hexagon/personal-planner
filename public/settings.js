@@ -14,7 +14,7 @@ export function validTimezone(value) {
   }
 }
 
-// Optional setup choices are page-only and isolated by verified account.
+// Saved timezone hints are page-only and isolated by verified account.
 export function createOnboarding() {
   const accounts = new Map();
   let owner = null;
@@ -23,32 +23,8 @@ export function createOnboarding() {
     setOwner(id) {
       owner = typeof id === "string" && id.length ? id : null;
       if (owner && !accounts.has(owner)) {
-        accounts.set(owner, {
-          deferred: false,
-          reviewing: false,
-          timezoneSkipped: false,
-          timezone: null,
-          established: false,
-        });
+        accounts.set(owner, { timezone: null });
       }
-    },
-    defer() {
-      if (owner) {
-        current().deferred = true;
-        current().reviewing = false;
-      }
-    },
-    review() {
-      if (owner) {
-        current().deferred = false;
-        current().reviewing = true;
-      }
-    },
-    skipTimezone() {
-      if (owner) current().timezoneSkipped = true;
-    },
-    setEstablished(hasHistory) {
-      if (owner && hasHistory === true) current().established = true;
     },
     setTimezone(value) {
       const timezone = validTimezone(value);
@@ -59,15 +35,10 @@ export function createOnboarding() {
       const state = current();
       const canChat = !!owner && consent === true && keyAvailable === true;
       return {
-        deferred: state?.deferred ?? false,
-        timezoneSkipped: state?.timezoneSkipped ?? false,
         timezone: state?.timezone ?? null,
         canChat,
         canBrowse: !!owner,
-        expanded: !!owner && !state.deferred &&
-          (state.reviewing || !canChat ||
-            (!state.established && !state.timezoneSkipped &&
-              (!state.timezone || state.timezone === "UTC"))),
+        expanded: !!owner && !canChat,
       };
     },
   };
@@ -220,7 +191,7 @@ export function createSettings({
     state.keyMode = "memory";
     return legacyCleared && tabCleared && deviceCleared;
   }
-  return {
+  const settings = {
     snapshot,
     syncConsent,
     handleStorageChange(key) {
@@ -300,5 +271,36 @@ export function createSettings({
       return { stored, cleared };
     },
     clearKey,
+  };
+  return {
+    ...settings,
+    save(
+      {
+        consent,
+        model,
+        reasoning,
+        key = "",
+        remember = false,
+        removeKey = false,
+      },
+    ) {
+      if (
+        !owner || typeof consent !== "boolean" || !models.includes(model) ||
+        !REASONING.includes(reasoning) || typeof key !== "string" ||
+        key.length > 512 || typeof remember !== "boolean" ||
+        typeof removeKey !== "boolean"
+      ) return { valid: false, stored: false, cleared: true };
+      const nextKey = key.trim() || (removeKey ? "" : state.key);
+      const keyResult = nextKey
+        ? settings.saveKey(nextKey, remember)
+        : { stored: true, cleared: removeKey ? clearKey() : true };
+      const consentStored = settings.setConsent(consent);
+      const preferencesStored = settings.setPreferences(model, reasoning);
+      return {
+        valid: true,
+        stored: keyResult.stored && consentStored && preferencesStored,
+        cleared: keyResult.cleared,
+      };
+    },
   };
 }

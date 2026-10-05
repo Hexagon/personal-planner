@@ -28,14 +28,15 @@ push notifications.
 
 ## Using chat
 
-Sign in, then review the focused **Before you chat** panel. AI interprets your
-requests through OpenRouter; accept the explicit data notice before sending a
-message. You can choose **Later** and still read saved history and upcoming
-items without a model request. Consent can be revoked or reviewed from
-**Settings**. Chat access is disclosed before sign-in: a deployment can provide
-a server-side key, or require your personal OpenRouter key. Usage is billed to
-the account whose key is used; app-provided access is not a promise of unlimited
-or free usage.
+Sign in, then review **Settings**, which opens automatically if AI consent or
+chat access is missing. Accept the explicit data notice, add a key if needed,
+and choose **Save** to apply consent, model/reasoning, and key settings
+together. You can close Settings and still read saved history and upcoming items
+without a model request. To revoke consent, uncheck the notice and choose
+**Save**. Chat access is disclosed before sign-in: a deployment can provide a
+server-side key, or require your personal OpenRouter key. Usage is billed to the
+account whose key is used; app-provided access is not a promise of unlimited or
+free usage.
 
 Model, reasoning, and personal-key options stay in Settings. Your key stays in
 account-scoped tab storage unless you explicitly choose device persistence.
@@ -45,8 +46,11 @@ For a new conversation, start with a real task. Suggestions only fill your
 draft; they never send automatically. A browser timezone suggestion also fills a
 separate “Set my timezone…” request: send it and confirm the proposed preference
 change before relying on local dates. It never silently changes your profile. If
-you skip timezone setup, a new account uses UTC until you confirm another
-timezone. Existing saved timezone preferences are preserved.
+you leave the optional timezone unchanged, a new account uses UTC until you
+confirm another timezone. Existing saved timezone preferences are preserved.
+
+The message composer stays compact until you click its expand button. Sending a
+message does not expand it.
 
 Ask in plain language to create, update, complete, cancel, or delete tasks; set
 preferences; or create reminders. Review each structured proposal and choose
