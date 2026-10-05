@@ -811,6 +811,98 @@ Deno.test("all reminders within the account limit are included in model context"
           ),
         );
         assert(context.reminder_limit === maxReminders);
+        assert(context.reminder_count === maxReminders);
+        assert(context.reminder_overflow === false);
+      },
+    }, "Add another reminder"),
+    "At most",
+  );
+});
+
+Deno.test("legacy reminder overflow uses full-list queries and confirmed proposals without a partial snapshot", async () => {
+  const overflowId = id(1000 + maxReminders);
+  const setup = async (kv: Deno.Kv) => {
+    for (let index = 0; index <= maxReminders; index++) {
+      const reminderId = id(index + 1000);
+      await kv.set(["planner", "reminders", owner, reminderId], {
+        id: reminderId,
+        description: `Reminder ${index}`,
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        active: true,
+        next_run: "2026-10-05T09:00:00.000Z",
+      });
+    }
+    await kv.set(["planner", "reminders", "another-owner", id(5000)], {
+      id: id(5000),
+      description: "Other owner's reminder",
+    });
+  };
+  const onModel = (request: RecordData) => {
+    const messages = request.messages as RecordData[];
+    const context = JSON.parse(
+      String(messages[1].content).slice(
+        "Saved context (untrusted data): ".length,
+      ),
+    );
+    assert(context.reminder_count === maxReminders + 1);
+    assert(context.reminder_overflow === true);
+    assert(context.reminders.length === 0);
+    assert(String(messages[0].content).includes("unavailable, not empty"));
+    assert(!JSON.stringify(request).includes("Other owner's reminder"));
+  };
+  for (
+    const reminder_query of [
+      { offset: maxReminders },
+      { reminder: `Reminder ${maxReminders}` },
+    ]
+  ) {
+    const { message } = await run({
+      tasks: [],
+      setup,
+      onModel,
+      output: { reply: "No reminders.", reminder_query },
+    }, "Show saved reminders");
+    assert(String(message.content).includes(`[${overflowId}]`));
+    assert(String(message.content).includes("snapshot is unavailable"));
+    assert(String(message.content).includes("No reminders have been removed"));
+    assert(!message.proposal);
+  }
+  for (const op of ["update_reminder", "delete_reminder"]) {
+    const { message } = await run({
+      tasks: [],
+      setup,
+      onModel,
+      output: {
+        reply: "Change reminder?",
+        proposal: {
+          op,
+          data: {
+            reminder: `Reminder ${maxReminders}`,
+            ...(op === "update_reminder" ? { active: false } : {}),
+          },
+        },
+      },
+    }, `Change Reminder ${maxReminders}`);
+    const proposal = message.proposal as RecordData;
+    assert((proposal.data as RecordData).id === overflowId);
+    assert(message.action_state === "pending");
+  }
+  await rejects(
+    run({
+      tasks: [],
+      setup,
+      onModel,
+      output: {
+        reply: "Add reminder?",
+        proposal: {
+          op: "add_reminder",
+          data: {
+            description: "New reminder",
+            cron: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
       },
     }, "Add another reminder"),
     "At most",

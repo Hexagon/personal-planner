@@ -45,7 +45,7 @@ For "show details of X" return "task_detail":{"task":"name or ID"}, proposal=nul
 For task lists return "task_query":{"location_name":null OR a place label,"due_date":null OR an exact YYYY-MM-DD date in the profile timezone,"urgency":null OR an array from overdue/today/soon/later/none,"status":"open" OR "done" OR "cancelled"}, proposal=null. "What's urgent?" uses ["overdue","today","soon"]. Code renders matching saved records and replaces your reply. Users can ask for done or cancelled tasks and may reopen a task by explicitly requesting its status be open; reopening needs confirmation.
 When the user asks what to buy, what to pick up, or what to do while going somewhere, prefer a concise checklist of existing open tasks: filter by the named place when it matches a saved location, or list all open tasks grouped by saved location when no place is given. For a specific day, use due_date; for broad time periods, use urgency only when it accurately matches. Never invent shopping items, imply unsaved items are on a saved list, or infer a new task from a question. If the intended place or date is ambiguous, ask a brief clarification. The exact task list is authoritative; prioritize it using its saved priority and due-date urgency.
 For day planning, use the open tasks' priority, urgency and location_name labels to suggest an order and grouping in your reply. Duration, cost, routes, travel time, opening hours and stock are unknown; never invent them.
-For saved settings use "settings_query":{}, proposal=null. For saved reminders use "reminder_query":{"reminder":null OR description/ID,"active":null OR boolean,"offset":0 OR next offset supplied by code}, proposal=null. Code renders authoritative saved data. The context includes every saved reminder, up to reminder_limit; if the limit is reached, do not propose another reminder and explain that one must be deleted first. Only active reminders and open tasks with due dates appear in the upcoming view.
+For saved settings use "settings_query":{}, proposal=null. For saved reminders use "reminder_query":{"reminder":null OR description/ID,"active":null OR boolean,"offset":0 OR next offset supplied by code}, proposal=null. Code renders authoritative saved data. reminder_count is the full saved count. If reminder_overflow is true, the reminder snapshot is unavailable, not empty: use reminder_query and its next offsets to show saved reminders, and copy the user's description or ID for update/delete proposals without guessing. These queries and proposals resolve against all saved reminders, including legacy overflow. Otherwise context includes every saved reminder. If reminder_count reaches reminder_limit, do not propose another reminder; enough reminders must be deleted to get below the limit first. Only active reminders and open tasks with due dates appear in the upcoming view.
 Proposals appear only with the reply that created them and must be confirmed with the inline buttons then. Historical proposals are unavailable; if the user asks about an older proposal, ask them to request it again. At most one proposal or query (task_query/task_detail/settings_query/reminder_query) per turn. Login, credentials and AI consent are handled outside this conversation; never propose changes to them.
 `;
 
@@ -94,12 +94,15 @@ export async function chat(
     timeZone: String(profile.timezone),
   }).format(new Date());
   const open = prioritize(tasks, today);
+  const reminderOverflow = reminders.length > maxReminders;
   const context = {
     today,
     timezone: profile.timezone,
     preferences: String(profile.preferences ?? ""),
     open_task_limit: maxOpenTasks,
     reminder_limit: maxReminders,
+    reminder_count: reminders.length,
+    reminder_overflow: reminderOverflow,
     open_tasks: {
       columns,
       rows: open.map((task) => [
@@ -113,7 +116,7 @@ export async function chat(
         String(task.created_at ?? "").slice(0, 10),
       ]),
     },
-    reminders: reminders.slice(0, maxReminders).map((reminder) => ({
+    reminders: (reminderOverflow ? [] : reminders).map((reminder) => ({
       id: reminder.id,
       description: String(reminder.description).slice(0, 100),
       cron: reminder.cron,
@@ -348,6 +351,10 @@ export async function chat(
   }
   if (output.reminder_query != null) {
     reply = reminderReply(reminders, output.reminder_query);
+  }
+  if (reminderOverflow) {
+    reply +=
+      `\n\nYou have ${reminders.length} saved reminders, above the ${maxReminders}-reminder limit. The AI reminder snapshot is unavailable. Ask to show saved reminders and their next pages, or update/delete a reminder by description or ID. No reminders have been removed; additions are blocked until you are below the limit.`;
   }
   const messages = await db.insert("messages", {
     role: "assistant",
