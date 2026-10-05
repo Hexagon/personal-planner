@@ -7,6 +7,12 @@ function assert(value: unknown, message = "Assertion failed"): asserts value {
 Deno.test("onboarding validates IANA timezone suggestions without accepting offsets or untrusted text", () => {
   assert(validTimezone("Europe/Stockholm") === "Europe/Stockholm");
   assert(validTimezone("UTC") === "UTC");
+  assert(validTimezone("CET") !== null);
+  assert(validTimezone("GMT") !== null);
+  const setup = createOnboarding();
+  setup.setOwner("account");
+  const alias = setup.setTimezone("CET");
+  assert(alias !== null && setup.snapshot(true, true).timezone === alias);
   for (
     const value of [
       null,

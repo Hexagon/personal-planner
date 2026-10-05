@@ -4,7 +4,7 @@ const REASONING = ["off", "high", "default"];
 export function validTimezone(value) {
   if (
     typeof value !== "string" || value.length > 100 ||
-    !/^(?:UTC|[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)+)$/.test(value)
+    !/^[A-Za-z_][A-Za-z0-9_]*(?:\/[A-Za-z0-9_+-]+)*$/.test(value)
   ) return null;
   try {
     return new Intl.DateTimeFormat("en", { timeZone: value }).resolvedOptions()

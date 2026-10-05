@@ -123,7 +123,11 @@ function updateOnboarding() {
   const consent = element("consent").checked;
   const keyAvailable = !!openrouterKey || !!config.serverKeyAvailable;
   const state = onboarding.snapshot(consent, keyAvailable);
-  element("onboarding-steps").hidden = !state.expanded;
+  const steps = element("onboarding-steps");
+  if (!state.expanded && steps.contains(document.activeElement)) {
+    element("review-setup").focus();
+  }
+  steps.hidden = !state.expanded;
   element("review-setup").setAttribute("aria-expanded", String(state.expanded));
   element("setup-status").textContent = state.canChat
     ? "Ready to chat. Every change still needs your confirmation."
@@ -755,6 +759,7 @@ element("chat-form").onsubmit = (event) => {
       openKeySetup();
       throw new Error("Add your OpenRouter API key to start chatting.");
     }
+    element("saved-next").hidden = true;
     expirePendingProposalCards();
     pendingUser?.remove();
     pendingUser = temporaryMessage("user", content);
