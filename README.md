@@ -46,9 +46,10 @@ For a new conversation, start with a real task. Suggestions only fill your
 draft; they never send automatically. Settings detects your browser's IANA
 timezone during initial setup (falling back to UTC if detection is unavailable).
 Review or edit it and choose **Save** to store it in your account without an AI
-request. Existing saved timezones are preserved. Change your account timezone
-only in Settings, not chat. Existing reminders retain their own timezone and
-schedule; task dates are grouped using the saved account timezone.
+request. Existing saved timezones are preserved. Change your account timezone in
+Settings; timezone changes are not chat actions. Existing reminders retain their
+own timezone and schedule; task dates are grouped using the saved account
+timezone.
 
 The message composer stays compact until you click its expand button. Sending a
 message does not expand it.

@@ -1,4 +1,4 @@
-export const CONSENT_VERSION = 2;
+export const CONSENT_VERSION = 3;
 const REASONING = ["off", "high", "default"];
 
 export function validTimezone(value) {

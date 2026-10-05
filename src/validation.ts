@@ -146,7 +146,7 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
     case "set_profile": {
       clean = {};
       if (data.timezone !== undefined) {
-        throw new InputError("Change your timezone in Settings");
+        throw new InputError("Profile updates accept preferences only");
       }
       if (data.preferences !== undefined) {
         clean.preferences = data.preferences == null || data.preferences === ""

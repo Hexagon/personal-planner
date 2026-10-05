@@ -17,9 +17,11 @@
   verified owner, and never trust an owner ID from the model/client.
 - Scheduler access stays server-side. Delivery must derive its owner from the
   reminder's KV key and atomically advance the expected occurrence.
-- Ask for inline confirmation before data or schedule mutations. Confirmations
-  must be transactional and safe to retry. Never claim a proposal is already
-  saved as a task before confirmation.
+- Ask for inline confirmation before AI-proposed data or schedule mutations.
+  Direct account-setting changes may be saved only through explicit,
+  session-verified Settings actions. Proposal confirmations must be
+  transactional and safe to retry. Never claim a proposal is already saved as a
+  task before confirmation.
 - Everything is a task with fixed fields: name, AI-written short description,
   user-only full description, location name, priority, due date, status and
   timestamps. Urgency, ordering and lists are calculated in code. Send every
