@@ -1,13 +1,13 @@
 :root {
   color-scheme: light dark;
   font: 16px/1.6 system-ui, sans-serif;
-  --bg: light-dark(#f8f9fc, #11131b);
-  --surface: light-dark(#fff, #1b1e2a);
-  --text: light-dark(#202438, #ecedf6);
-  --muted: light-dark(#62677b, #adb2c8);
-  --line: light-dark(#e0e3ef, #363b50);
-  --accent: light-dark(#5745c4, #b6a7ff);
-  --tint: light-dark(#eeebff, #2c254b);
+  --bg: light-dark(#f7f5f0, #19191e);
+  --surface: light-dark(#fffdf9, #24242c);
+  --text: light-dark(#302f38, #f0ede7);
+  --muted: light-dark(#65616c, #bcb7c4);
+  --line: light-dark(#dedbd5, #44414d);
+  --accent: light-dark(#56598b, #b6b8e7);
+  --tint: light-dark(#ecebf4, #303044);
 }
 * {
   box-sizing: border-box;
@@ -19,6 +19,7 @@ body {
 }
 main {
   margin: 0 auto;
+  max-width: 960px;
   padding: 0 .75rem .75rem;
 }
 header,
@@ -139,8 +140,67 @@ label {
   display: block;
 }
 #login {
-  margin: 4rem auto;
-  max-width: 560px;
+  margin: 3rem auto;
+  max-width: 760px;
+}
+#landing-title {
+  font-size: clamp(2.4rem, 7vw, 4rem);
+  max-width: 12ch;
+  margin: .75rem 0 1.25rem;
+}
+.landing-details,
+.landing-demo,
+.landing-faq {
+  margin-top: 2.5rem;
+}
+.benefits,
+.demo-flow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+.benefits li,
+.demo-flow li,
+#onboarding {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+  padding: 1rem 1.25rem;
+}
+.benefits strong {
+  display: block;
+}
+.demo-flow p {
+  margin: .4rem 0;
+}
+.demo-flow .eyebrow {
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.landing-faq details {
+  border-bottom: 1px solid var(--line);
+  padding: .75rem 0;
+}
+.landing-faq summary {
+  color: var(--text);
+  font-weight: 600;
+}
+#onboarding {
+  margin-bottom: 1rem;
+  scroll-margin-top: 6rem;
+}
+.setup-step {
+  border-top: 1px solid var(--line);
+  padding: 1rem 0;
+}
+#onboarding .privacy {
+  margin: .5rem 0 1rem;
+}
+.settings-panel h2 {
+  font-size: 1.2rem;
 }
 .eyebrow {
   color: var(--accent);
@@ -549,6 +609,13 @@ dd {
   }
   #empty-chat {
     padding-top: 2rem;
+  }
+  .benefits,
+  .demo-flow {
+    grid-template-columns: 1fr;
+  }
+  #onboarding .pane-heading {
+    flex-wrap: wrap;
   }
   .composer-tools .hint {
     display: none;

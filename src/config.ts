@@ -7,6 +7,7 @@ export interface Config {
   githubClientId?: string;
   githubClientSecret?: string;
   origin: string;
+  publicIndexing?: boolean;
   port: number;
 }
 export const availableModels = [
@@ -92,6 +93,8 @@ export function loadConfig(): Config {
       ? { githubClientId, githubClientSecret }
       : {}),
     origin,
+    publicIndexing: Deno.env.get("APP_ENV") === "production" &&
+      appOrigin.protocol === "https:",
     port,
   };
 }

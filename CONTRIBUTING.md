@@ -27,6 +27,12 @@ and live OpenRouter integration require your own credentials.
 - [ ] Sign in with a provider, accept the AI notice, and start chatting with
       both an app-provided key and a personal key; verify consent and key scope
       in Settings.
+- [ ] Check the landing-page access disclosure in both key modes. Defer
+      onboarding and verify history/upcoming still load without AI consent.
+      Suggestions must only fill drafts; timezone changes need confirmation.
+- [ ] Check production canonical/share URLs, binary social/favicon assets,
+      `/robots.txt`, and `/sitemap.xml`; previews and API/auth responses must
+      remain unindexed.
 - [ ] Ask for a task list, an ambiguous task change, and a completed/cancelled
       task list; confirm a mutation, retry the same confirmation, and reopen a
       finished task.

@@ -1,6 +1,78 @@
 export const CONSENT_VERSION = 2;
 const REASONING = ["off", "high", "default"];
 
+export function validTimezone(value) {
+  if (
+    typeof value !== "string" || value.length > 100 ||
+    !/^[A-Za-z_][A-Za-z0-9_]*(?:\/[A-Za-z0-9_+-]+)*$/.test(value)
+  ) return null;
+  try {
+    return new Intl.DateTimeFormat("en", { timeZone: value }).resolvedOptions()
+      .timeZone;
+  } catch {
+    return null;
+  }
+}
+
+// Optional setup choices are page-only and isolated by verified account.
+export function createOnboarding() {
+  const accounts = new Map();
+  let owner = null;
+  const current = () => accounts.get(owner);
+  return {
+    setOwner(id) {
+      owner = typeof id === "string" && id.length ? id : null;
+      if (owner && !accounts.has(owner)) {
+        accounts.set(owner, {
+          deferred: false,
+          reviewing: false,
+          timezoneSkipped: false,
+          timezone: null,
+          established: false,
+        });
+      }
+    },
+    defer() {
+      if (owner) {
+        current().deferred = true;
+        current().reviewing = false;
+      }
+    },
+    review() {
+      if (owner) {
+        current().deferred = false;
+        current().reviewing = true;
+      }
+    },
+    skipTimezone() {
+      if (owner) current().timezoneSkipped = true;
+    },
+    setEstablished(hasHistory) {
+      if (owner && hasHistory === true) current().established = true;
+    },
+    setTimezone(value) {
+      const timezone = validTimezone(value);
+      if (owner && timezone) current().timezone = timezone;
+      return timezone;
+    },
+    snapshot(consent, keyAvailable) {
+      const state = current();
+      const canChat = !!owner && consent === true && keyAvailable === true;
+      return {
+        deferred: state?.deferred ?? false,
+        timezoneSkipped: state?.timezoneSkipped ?? false,
+        timezone: state?.timezone ?? null,
+        canChat,
+        canBrowse: !!owner,
+        expanded: !!owner && !state.deferred &&
+          (state.reviewing || !canChat ||
+            (!state.established && !state.timezoneSkipped &&
+              (!state.timezone || state.timezone === "UTC"))),
+      };
+    },
+  };
+}
+
 export async function verifyChatSession(
   expectedOwner,
   fetchSession,
@@ -25,7 +97,7 @@ export async function verifyChatSession(
   if (!expectedOwner || verified.user.id !== expectedOwner) {
     setSession(verified);
     throw new Error(
-      "Your signed-in account changed. Review this account's Settings and write a new message. Your message was not sent.",
+      "Your signed-in account changed. Review this account's setup and write a new message. Your message was not sent.",
     );
   }
 }
