@@ -161,6 +161,7 @@ function reviewSetup() {
   onboarding.review();
   element("settings").open = false;
   updateOnboarding();
+  element("review-setup").focus();
   element("onboarding").scrollIntoView({ block: "start" });
 }
 function openKeySetup() {
