@@ -53,6 +53,97 @@ function setup(
   return { settings, local, tab };
 }
 
+Deno.test("one Save applies consent, preferences and key together for the verified account", () => {
+  const { settings, local, tab } = setup();
+  const draft = {
+    consent: true,
+    model: "model-b",
+    reasoning: "high",
+    key: "credential-free-placeholder",
+    remember: false,
+  };
+  assert(!settings.save(draft).valid);
+  settings.setOwner(owner);
+  assert(!settings.snapshot().consent && !settings.snapshot().key);
+  assert(local.getItem(scoped("settings")) === null);
+  const saved = settings.save(draft);
+  assert(saved.valid && saved.stored && saved.cleared);
+  assert(settings.snapshot().consent);
+  const reload = setup(local, tab).settings.setOwner(owner);
+  assert(reload.consent && reload.model === "model-b");
+  assert(reload.reasoning === "high" && reload.key === draft.key);
+  settings.setOwner(other);
+  assert(!settings.snapshot().consent && !settings.snapshot().key);
+});
+
+Deno.test("invalid settings Save cannot partially grant consent or overwrite credentials", () => {
+  const { settings, local, tab } = setup();
+  settings.setOwner(owner);
+  settings.saveKey("existing-placeholder");
+  const before = JSON.stringify(settings.snapshot());
+  for (
+    const invalid of [
+      { model: "unlisted" },
+      { reasoning: "unlisted" },
+      { key: "x".repeat(513) },
+      { consent: "true" },
+      { remember: "true" },
+      { removeKey: "true" },
+    ]
+  ) {
+    const result = settings.save(
+      {
+        consent: true,
+        model: "model-a",
+        reasoning: "off",
+        ...invalid,
+      } as unknown as Parameters<typeof settings.save>[0],
+    );
+    assert(!result.valid);
+    assert(JSON.stringify(settings.snapshot()) === before);
+    assert(local.getItem(scoped("consent")) === null);
+    assert(tab.getItem(scoped("key")) === "existing-placeholder");
+  }
+});
+
+Deno.test("Save retains a blank key, updates persistence, and applies explicit removal and revocation", () => {
+  const { settings, local, tab } = setup();
+  settings.setOwner(owner);
+  settings.saveKey("existing-placeholder");
+  const preferences = { consent: true, model: "model-a", reasoning: "off" };
+  assert(settings.save(preferences).stored);
+  assert(settings.snapshot().key === "existing-placeholder");
+  assert(settings.save({ ...preferences, remember: true }).stored);
+  assert(tab.getItem(scoped("key")) === null);
+  assert(local.getItem(scoped("key")) === "existing-placeholder");
+  assert(
+    settings.save({
+      ...preferences,
+      consent: false,
+      removeKey: true,
+    }).stored,
+  );
+  assert(!settings.snapshot().consent && !settings.snapshot().key);
+  assert(local.getItem(scoped("key")) === null);
+});
+
+Deno.test("Save reports storage failures while keeping settings usable on this page", () => {
+  const { settings, local, tab } = setup();
+  settings.setOwner(owner);
+  local.failWrite = true;
+  tab.failWrite = true;
+  const result = settings.save({
+    consent: true,
+    model: "model-b",
+    reasoning: "high",
+    key: "credential-free-placeholder",
+  });
+  assert(result.valid && !result.stored);
+  const current = settings.snapshot();
+  assert(current.consent && current.model === "model-b");
+  assert(current.reasoning === "high" && current.keyMode === "memory");
+});
+
 Deno.test("settings restore versioned consent, model/reasoning and a tab key on reload", () => {
   const { settings, local, tab } = setup();
   assert(!settings.setConsent(true));

@@ -493,6 +493,45 @@ Deno.test("lists and completions are rendered from saved records", async () => {
   );
 });
 
+Deno.test("account timezone is not included in chat context or setting instructions", async () => {
+  const { modelRequest } = await run({
+    tasks: [],
+    setup: async (kv) => {
+      await kv.set(["planner", "profiles", owner], {
+        timezone: "Pacific/Kiritimati",
+        preferences: "",
+      });
+    },
+    output: { reply: "Done", proposal: null },
+  }, "Hello");
+  const request = JSON.parse(modelRequest);
+  const savedContext = JSON.parse(
+    String(request.messages[1].content).split(
+      "Saved context (untrusted data): ",
+    )[1],
+  );
+  assert(!("timezone" in savedContext));
+  assert(!String(request.messages[0].content).includes("Account timezone"));
+  assert(!modelRequest.includes("Pacific/Kiritimati"));
+});
+
+Deno.test("chat cannot propose profile timezone changes even alongside preferences", async () => {
+  for (
+    const data of [
+      { timezone: "UTC" },
+      { timezone: "Europe/Stockholm", preferences: "Brief replies" },
+    ]
+  ) {
+    await rejectsProviderOutput(run({
+      tasks: [],
+      output: {
+        reply: "Change timezone?",
+        proposal: { op: "set_profile", data },
+      },
+    }, "Set my timezone to UTC"));
+  }
+});
+
 Deno.test("saved settings and reminders are authoritative and owner scoped", async () => {
   const setup = async (kv: Deno.Kv, db: Database) => {
     await kv.set(["planner", "profiles", owner], {
@@ -536,6 +575,7 @@ Deno.test("saved settings and reminders are authoritative and owner scoped", asy
         )[1],
       );
       assert(saved.preferences.length === 4000);
+      assert(!("timezone" in saved));
       assert(!("proposal_states" in saved));
       const history = request.messages as RecordData[];
       assert(
@@ -550,6 +590,7 @@ Deno.test("saved settings and reminders are authoritative and owner scoped", asy
     },
   }, "What are my saved preferences?");
   assert(String(settings.message.content).includes("p".repeat(4000)));
+  assert(!String(settings.message.content).includes("Timezone:"));
   assert(!settings.modelRequest.includes("OTHER-OWNER-REMINDER"));
   const reminders = await run({
     tasks: [],
@@ -720,7 +761,7 @@ Deno.test("saved query shapes and one-operation boundary reject malformed model 
       { task_query: { urgency: "soon" } },
       { task_query: { urgency: false } },
       {
-        proposal: { op: "set_profile", data: { timezone: "UTC" } },
+        proposal: { op: "set_profile", data: { preferences: "Brief replies" } },
         reminder_query: {},
       },
     ]

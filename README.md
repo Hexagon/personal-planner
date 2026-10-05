@@ -28,29 +28,35 @@ push notifications.
 
 ## Using chat
 
-Sign in, then review the focused **Before you chat** panel. AI interprets your
-requests through OpenRouter; accept the explicit data notice before sending a
-message. You can choose **Later** and still read saved history and upcoming
-items without a model request. Consent can be revoked or reviewed from
-**Settings**. Chat access is disclosed before sign-in: a deployment can provide
-a server-side key, or require your personal OpenRouter key. Usage is billed to
-the account whose key is used; app-provided access is not a promise of unlimited
-or free usage.
+Sign in, then review **Settings**, which opens automatically if AI consent or
+chat access is missing. Accept the explicit data notice, add a key if needed,
+and choose **Save** to apply consent, model/reasoning, key and timezone settings
+together. You can close Settings and still read saved history and upcoming items
+without a model request. To revoke consent, uncheck the notice and choose
+**Save**. Chat access is disclosed before sign-in: a deployment can provide a
+server-side key, or require your personal OpenRouter key. Usage is billed to the
+account whose key is used; app-provided access is not a promise of unlimited or
+free usage.
 
 Model, reasoning, and personal-key options stay in Settings. Your key stays in
 account-scoped tab storage unless you explicitly choose device persistence.
 Blocked storage falls back to page memory and reports that it was not saved.
 
 For a new conversation, start with a real task. Suggestions only fill your
-draft; they never send automatically. A browser timezone suggestion also fills a
-separate “Set my timezone…” request: send it and confirm the proposed preference
-change before relying on local dates. It never silently changes your profile. If
-you skip timezone setup, a new account uses UTC until you confirm another
-timezone. Existing saved timezone preferences are preserved.
+draft; they never send automatically. Settings detects your browser's IANA
+timezone during initial setup (falling back to UTC if detection is unavailable).
+Review or edit it and choose **Save** to store it in your account without an AI
+request. Existing saved timezones are preserved. Change your account timezone in
+Settings; timezone changes are not chat actions. Existing reminders retain their
+own timezone and schedule; task dates are grouped using the saved account
+timezone.
+
+The message composer stays compact until you click its expand button. Sending a
+message does not expand it.
 
 Ask in plain language to create, update, complete, cancel, or delete tasks; set
 preferences; or create reminders. Review each structured proposal and choose
-**Confirm** or **Cancel**. Mutations are never applied before confirmation.
+**Confirm** or **Cancel**. Chat mutations are never applied before confirmation.
 Ambiguous task or reminder references need clarification. Proposal cards are
 available only with the reply that created them. If you skip one or lose it from
 the current chat view, ask again rather than retrieving an older proposal.
@@ -60,7 +66,6 @@ description and location, priority (1–5), optional due date, status, and
 timestamps. The app calculates urgency and ordering, and renders task lists from
 saved records. Up to 300 open tasks are supported. Example requests:
 
-- “Set my timezone to Europe/Stockholm.”
 - “Remember that I should buy milk at the grocery store.”
 - “Add car service at the garage, priority 4, due Friday.”
 - “What’s urgent?” or “What’s at the grocery store?”

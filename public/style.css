@@ -162,8 +162,7 @@ label {
   list-style: none;
 }
 .benefits li,
-.demo-flow li,
-#onboarding {
+.demo-flow li {
   border: 1px solid var(--line);
   border-radius: 1rem;
   background: var(--surface);
@@ -188,16 +187,9 @@ label {
   color: var(--text);
   font-weight: 600;
 }
-#onboarding {
-  margin-bottom: 1rem;
-  scroll-margin-top: 6rem;
-}
 .setup-step {
   border-top: 1px solid var(--line);
   padding: 1rem 0;
-}
-#onboarding .privacy {
-  margin: .5rem 0 1rem;
 }
 .settings-panel h2 {
   font-size: 1.2rem;
@@ -613,9 +605,6 @@ dd {
   .benefits,
   .demo-flow {
     grid-template-columns: 1fr;
-  }
-  #onboarding .pane-heading {
-    flex-wrap: wrap;
   }
   .composer-tools .hint {
     display: none;
