@@ -68,6 +68,7 @@ export function nextOccurrence(
   }
 }
 export const maxOpenTasks = 300;
+export const maxReminders = 100;
 export const taskStatuses = ["open", "done", "cancelled"] as const;
 function dueDate(value: unknown): string | null {
   if (value == null) return null;
@@ -179,8 +180,8 @@ export function validateProposal(value: unknown, now = new Date()): Proposal {
       if (Object.keys(clean).length === 1) {
         throw new InputError("Reminder update must include a changed field");
       }
-      if (clean.cron !== undefined && clean.timezone !== undefined) {
-        nextOccurrence(clean.cron, clean.timezone, now);
+      if (clean.cron !== undefined) {
+        nextOccurrence(clean.cron, clean.timezone ?? "UTC", now);
       }
       break;
     }

@@ -8,6 +8,7 @@ import { upcoming } from "../src/upcoming.ts";
 import {
   InputError,
   maxOpenTasks,
+  maxReminders,
   type RecordData,
 } from "../src/validation.ts";
 
@@ -1082,7 +1083,7 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
           description: "Plan",
           cron: "0 9 * * *",
           timezone: "UTC",
-          next_run: new Date().toISOString(),
+          next_run: "1900-01-01T00:00:00.000Z",
         },
       },
     });
@@ -1092,7 +1093,8 @@ Deno.test("profile, batch-task, and reminder changes are confirmed and atomic", 
       savedReminder.description === "Plan" &&
         savedReminder.cron === "0 9 * * *" &&
         savedReminder.timezone === "UTC" &&
-        typeof savedReminder.next_run === "string" &&
+        Date.parse(String(savedReminder.next_run)) > Date.now() &&
+        typeof savedReminder.updated_at === "string" &&
         savedReminder.active === true,
       "Confirmation must save the proposed reminder schedule",
     );
@@ -1437,5 +1439,54 @@ Deno.test("invalid reminder schedules are quarantined without blocking due remin
     assert(
       (await kv.get(["planner", "due", due, owner, staleId])).value === null,
     );
+  });
+});
+
+Deno.test("concurrent reminder confirmations cannot exceed the account cap", async () => {
+  await withKv(async (kv) => {
+    const db = new Database(kv, owner);
+    for (let index = 0; index < maxReminders - 1; index++) {
+      const reminderId = id(index + 2000);
+      await kv.set(["planner", "reminders", owner, reminderId], {
+        id: reminderId,
+        user_id: owner,
+        description: `Reminder ${index}`,
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        next_run: "2026-10-05T09:00:00.000Z",
+        active: false,
+        created_at: "2026-01-01T00:00:00.000Z",
+      });
+    }
+    const proposals = await Promise.all(
+      ["First", "Second"].map((description) =>
+        db.insert("messages", {
+          role: "assistant",
+          content: `Add ${description}?`,
+          proposal: {
+            op: "add_reminder",
+            data: {
+              description,
+              cron: "0 9 * * *",
+              timezone: "UTC",
+            },
+          },
+        })
+      ),
+    );
+    const results = await Promise.allSettled(
+      proposals.map(([message]) => db.confirm(message.id, false)),
+    );
+    assert(
+      results.filter((result) => result.status === "fulfilled" && result.value)
+        .length === 1,
+    );
+    const rejected = results.find((result) => result.status === "rejected");
+    assert(
+      rejected?.status === "rejected" &&
+        rejected.reason instanceof InputError &&
+        rejected.reason.message.includes(String(maxReminders)),
+    );
+    assert((await db.list("reminders")).length === maxReminders);
   });
 });

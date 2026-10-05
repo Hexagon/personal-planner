@@ -272,6 +272,16 @@ Deno.test("reminder updates validate schedule, state, and target", () => {
       },
     },
   );
+  equal(
+    validateProposal({
+      op: "update_reminder",
+      data: { id, cron: "0 9 * * *" },
+    }),
+    {
+      op: "update_reminder",
+      data: { id, cron: "0 9 * * *" },
+    },
+  );
   rejects(() =>
     validateProposal({
       op: "update_reminder",
@@ -282,6 +292,12 @@ Deno.test("reminder updates validate schedule, state, and target", () => {
     validateProposal({
       op: "update_reminder",
       data: { id, cron: "not a schedule", timezone: "UTC" },
+    })
+  );
+  rejects(() =>
+    validateProposal({
+      op: "update_reminder",
+      data: { id, cron: "not a schedule" },
     })
   );
   rejects(() => validateProposal({ op: "update_reminder", data: { id } }));
