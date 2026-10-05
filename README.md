@@ -175,20 +175,6 @@ production; production excludes `/auth/` and `/api/` and lists a one-page
 These directives are not authorization: existing session checks still protect
 account data.
 
-### Brand rollout
-
-Dayfold replaces the application name Personal Planner. This release does not
-rename the repository, change the domain, migrate storage, or alter account
-identities. Existing `planner` KV/browser namespaces and database paths remain
-deliberately unchanged.
-
-Before a public launch, the owner should check the name against competing
-products, trademarks in intended markets, domains, and repository availability.
-No name-clearance or availability claim is made here. Then update the GitHub
-repository description and OAuth provider display names/logos to match Dayfold.
-If renaming to `Hexagon/dayfold`, verify repository redirects, local remotes,
-documentation links, and deployment integrations; keep PRs targeting `dev`.
-
 Keep the current origin for the initial rollout. A later domain change requires
 coordinated `APP_ORIGIN`, OAuth callbacks, redirects, and indexing changes.
 Browser-stored keys, consent, and preferences do not transfer automatically to a
