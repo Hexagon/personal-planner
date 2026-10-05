@@ -6,7 +6,7 @@ import {
 } from "./config.ts";
 import { authenticate, AuthError, handleAuth } from "./auth.ts";
 import { Database } from "./db.ts";
-import { chat } from "./chat.ts";
+import { chat, ChatRequestError } from "./chat.ts";
 import { upcoming } from "./upcoming.ts";
 import { InputError, object, text } from "./validation.ts";
 import { canIndex, renderLanding, robots, sitemap } from "./landing.ts";
@@ -272,11 +272,34 @@ export function createHandler(
       if (error instanceof InputError) {
         return json({ error: error.message }, 400);
       }
-      console.error("Planner request failed");
+      const requestId = crypto.randomUUID();
+      if (error instanceof ChatRequestError) {
+        console.error(
+          JSON.stringify({
+            event: "chat_provider_failure",
+            request_id: requestId,
+            category: error.category,
+            status: error.status,
+            upstream_status: error.providerStatus,
+          }),
+        );
+        return json(
+          { error: error.message, request_id: requestId },
+          error.status,
+        );
+      }
+      console.error(
+        JSON.stringify({
+          event: "planner_request_failure",
+          request_id: requestId,
+          error_type: error instanceof Error ? error.name : "unknown",
+        }),
+      );
       return json({
         error:
-          "Request failed. Refresh chat to check proposal status before retrying.",
-      }, 502);
+          "An unexpected server error occurred. Refresh chat before retrying.",
+        request_id: requestId,
+      }, 500);
     }
   };
 }

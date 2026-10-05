@@ -1,4 +1,4 @@
-import { chat } from "../src/chat.ts";
+import { chat, ChatRequestError } from "../src/chat.ts";
 import { Database } from "../src/db.ts";
 import type { Config, ReasoningMode } from "../src/config.ts";
 import { InputError, type RecordData } from "../src/validation.ts";
@@ -150,20 +150,76 @@ Deno.test("invalid provider responses and transport failures never save assistan
     envelope('{"reply":"unfinished'),
     envelope("[]"),
     envelope("null"),
+    envelope(JSON.stringify({ proposal: null })),
+    envelope(JSON.stringify({ reply: "", proposal: null })),
+    envelope(JSON.stringify({ reply: null, proposal: null })),
     envelope(valid, "length"),
     envelope(valid, "content_filter"),
   ];
-  const failures: (() => Promise<Response>)[] = [
-    ...responses.map((body) => () =>
-      Promise.resolve(new Response(JSON.stringify(body)))
-    ),
-    () =>
-      Promise.resolve(
-        new Response("provider-private-error", { status: 429 }),
-      ),
-    () => Promise.resolve(new Response("not-json")),
-    () => Promise.reject(new DOMException("Timed out", "TimeoutError")),
-    () => Promise.reject(new TypeError("Network unavailable")),
+  const failures = [
+    ...responses.map((body) => ({
+      category: "provider_invalid_response",
+      status: 502,
+      providerStatus: undefined,
+      run: () => Promise.resolve(new Response(JSON.stringify(body))),
+    })),
+    {
+      category: "provider_response",
+      status: 502,
+      providerStatus: 429,
+      run: () =>
+        Promise.resolve(
+          new Response("provider-private-error", { status: 429 }),
+        ),
+    },
+    {
+      category: "provider_invalid_response",
+      status: 502,
+      providerStatus: undefined,
+      run: () => Promise.resolve(new Response("not-json")),
+    },
+    {
+      category: "provider_connection",
+      status: 502,
+      providerStatus: undefined,
+      run: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new TypeError("Body connection failed"));
+              },
+            }),
+          ),
+        ),
+    },
+    {
+      category: "provider_timeout",
+      status: 504,
+      providerStatus: undefined,
+      run: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new DOMException("Timed out", "TimeoutError"));
+              },
+            }),
+          ),
+        ),
+    },
+    {
+      category: "provider_timeout",
+      status: 504,
+      providerStatus: undefined,
+      run: () => Promise.reject(new DOMException("Timed out", "TimeoutError")),
+    },
+    {
+      category: "provider_connection",
+      status: 502,
+      providerStatus: undefined,
+      run: () => Promise.reject(new TypeError("Network unavailable")),
+    },
   ];
   try {
     for (const failure of failures) {
@@ -172,16 +228,25 @@ Deno.test("invalid provider responses and transport failures never save assistan
         const db = new Database(kv, owner);
         globalThis.fetch = (_input, init) => {
           assert(init?.signal instanceof AbortSignal);
-          return failure();
+          return failure.run();
         };
         let failed = false;
         try {
           await chat(db, config, "Hello");
         } catch (error) {
           failed = true;
+          assert(error instanceof ChatRequestError);
+          assert(error.status === failure.status);
+          assert(error.category === failure.category);
+          assert(error.providerStatus === failure.providerStatus);
           assert(
             !String(error).includes("provider-private-error"),
             "Raw provider errors must not escape",
+          );
+          assert(
+            !error.message.includes("Network unavailable") &&
+              !error.message.includes("Timed out"),
+            "Raw transport errors must not escape",
           );
         }
         assert(failed, "Invalid responses must fail closed");
@@ -208,6 +273,22 @@ async function rejects(promise: Promise<unknown>, text?: string) {
     throw error;
   }
   throw new Error("Expected chat to reject");
+}
+
+async function rejectsProviderOutput(promise: Promise<unknown>) {
+  try {
+    await promise;
+  } catch (error) {
+    if (
+      error instanceof ChatRequestError &&
+      error.status === 502 &&
+      error.category === "provider_invalid_response"
+    ) {
+      return;
+    }
+    throw error;
+  }
+  throw new Error("Expected invalid provider output to reject");
 }
 
 Deno.test("every open task is in context as a compact row; full descriptions and finished tasks are not", async () => {
@@ -280,7 +361,7 @@ Deno.test("add_task proposals are validated, pending, and accept only the user's
   assert(message.action_state === "pending");
   assert(data.user_id === undefined && data.name === "Car service");
   assert(data.full_description === "Ask   about the brakes");
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks: [],
       output: {
@@ -291,9 +372,8 @@ Deno.test("add_task proposals are validated, pending, and accept only the user's
         },
       },
     }, "Add car service"),
-    "own text",
   );
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks: [],
       output: {
@@ -401,7 +481,7 @@ Deno.test("lists and completions are rendered from saved records", async () => {
     JSON.stringify((proposal.data as RecordData).ids) ===
       JSON.stringify([id(1), id(2)]),
   );
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks,
       output: {
@@ -621,8 +701,6 @@ Deno.test("update/delete resolve finished tasks by user reference and clarify am
 Deno.test("saved query shapes and one-operation boundary reject malformed model output", async () => {
   for (
     const output of [
-      { reply: null },
-      { reply: "" },
       { proposal: { op: "run_sql", data: {} } },
       { proposal: { op: "add_task", data: { name: "Missing summary" } } },
       {
@@ -647,17 +725,33 @@ Deno.test("saved query shapes and one-operation boundary reject malformed model 
       },
     ]
   ) {
-    await rejects(
+    await rejectsProviderOutput(
       run({ tasks: [], output: { reply: "Hi", ...output } }, "Show saved data"),
     );
   }
-  await rejects(
+  await rejectsProviderOutput(
     run({
       tasks: [],
       output: { reply: "Hi", proposal_query: {} },
     }, "Show settings"),
-    "Historical proposals are not available",
   );
+});
+
+Deno.test("user input validation remains an input error before calling the provider", async () => {
+  const original = globalThis.fetch;
+  const kv = await Deno.openKv(":memory:");
+  try {
+    globalThis.fetch = () => {
+      throw new Error("Provider must not be called");
+    };
+    await rejects(
+      chat(new Database(kv, owner), config, ""),
+      "Expected non-empty text",
+    );
+  } finally {
+    globalThis.fetch = original;
+    await kv.close();
+  }
 });
 
 Deno.test("reminder targets clarify unknown/ambiguous references and reject foreign IDs", async () => {
